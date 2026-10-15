@@ -1421,8 +1421,14 @@
                 </div>
             </div>
             
-            <div class="modal-footer no-print">
+            <div class="modal-footer no-print" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
                 <button class="btn btn-secondary" onclick="closeModal('receipt-details-modal')">إغلاق النافذة</button>
+                <button class="btn btn-warning" onclick="loadDraftForEditing(document.getElementById('detail-receipt-list-id').innerText.trim());" style="background-color: #f59e0b; color: white; border: none; display: flex; align-items: center; gap: 6px; font-weight: bold; cursor: pointer;">
+                    ✏️ تعديل هذه القائمة
+                </button>
+                <button class="btn btn-danger" onclick="deleteDraftReceipt(document.getElementById('detail-receipt-list-id').innerText.trim());" style="background-color: #ef4444; color: white; border: none; display: flex; align-items: center; gap: 6px; font-weight: bold; cursor: pointer;">
+                    🗑️ حذف القائمة
+                </button>
                 <button class="btn btn-primary" onclick="generateReceiptInvoicePDF(document.getElementById('detail-receipt-list-id').innerText.trim())" style="background-color: #2563eb; border-color: #2563eb; display: flex; align-items: center; gap: 6px; font-weight: bold;">
                     📄 تصدير وتحميل كملف PDF
                 </button>
@@ -1438,6 +1444,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
     <script src="stents_data.js?v=1.0.0"></script>
-    <script src="app.js?v=2.2.0"></script>
+    <script src="app.js?v=2.2.1"></script>
 </body>
 </html>
