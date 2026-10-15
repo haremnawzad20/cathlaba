@@ -2211,5 +2211,54 @@ body {
     border-top-color: #e2e8f0;
 }
 
+/* زر إضافة مادة جديدة للنظام من داخل شاشة إعدادات التصنيفات */
+.btn-category-quick-add {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background-color: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-category-quick-add:hover {
+    background-color: #2563eb;
+    color: #ffffff;
+    border-color: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.btn-category-quick-add .plus-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+[data-theme="light"] .btn-category-quick-add {
+    background-color: #eff6ff;
+    color: #1d4ed8;
+    border-color: #bfdbfe;
+}
+
+[data-theme="light"] .btn-category-quick-add:hover {
+    background-color: #2563eb;
+    color: #ffffff;
+    border-color: #2563eb;
+}
+
+#quick-add-material-modal,
+#quick-edit-material-modal {
+    z-index: 1050;
+}
+
 
 
