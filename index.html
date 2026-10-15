@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>نظام جرد وإدارة مخازن مواد القسطرة</title>
-    <link rel="stylesheet" href="styles.css?v=2.1.1">
+    <link rel="stylesheet" href="styles.css?v=2.1.2">
 </head>
 <body>
 
@@ -1312,6 +1312,49 @@
         </div>
     </div>
 
+    <!-- 13. مودال تعديل بيانات مادة موجودة بالنظام -->
+    <div id="quick-edit-material-modal" class="modal">
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h3 class="modal-title">✏️ تعديل بيانات المادة الطبية</h3>
+                <button class="btn-icon" onclick="closeModal('quick-edit-material-modal')">✕</button>
+            </div>
+            <div class="modal-body" style="direction: rtl;">
+                <form id="quick-edit-material-form" onsubmit="event.preventDefault(); submitQuickEditMaterialForm();">
+                    <input type="hidden" id="quick-edit-original-name">
+                    
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label class="form-label">اسم المادة الطبية</label>
+                        <input type="text" id="quick-edit-name" class="form-control" required style="width: 100%;">
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label class="form-label">الشركة المصنعة</label>
+                        <input type="text" id="quick-edit-company" class="form-control" placeholder="اسم الشركة المصنعة" style="width: 100%;">
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label class="form-label">التصنيف</label>
+                        <select id="quick-edit-category" class="form-control" required style="width: 100%; cursor: pointer;">
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label class="form-label">السعر الافتراضي (د.ع)</label>
+                        <input type="number" id="quick-edit-price" class="form-control" min="0" value="0" style="width: 100%;">
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('quick-edit-material-modal')">إلغاء</button>
+                        <button type="submit" class="btn btn-primary" style="background-color: #0284c7; border-color: #0284c7; font-weight: bold;">
+                            💾 حفظ وتحديث المادة
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- 11. مودال عرض تفاصيل قائمة الإدخال المحفوظة (Receipt Details) -->
     <div id="receipt-details-modal" class="modal">
         <div class="modal-content" style="max-width: 900px; width: 95%;">
@@ -1444,6 +1487,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
     <script src="stents_data.js?v=1.0.0"></script>
-    <script src="app.js?v=2.2.3"></script>
+    <script src="app.js?v=2.2.4"></script>
 </body>
 </html>
