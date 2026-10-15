@@ -1,0 +1,22 @@
+{
+  "name": "catheter-inventory",
+  "version": "1.0.0",
+  "description": "نظام جرد وإدارة مخازن قسطرة القلب التخصصي",
+  "main": "app.js",
+  "scripts": {
+    "cap:sync": "cap sync",
+    "cap:open-android": "cap open android",
+    "cap:open-ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/ios": "^6.0.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

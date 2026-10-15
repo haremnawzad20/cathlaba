@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام جرد وإدارة مخازن مواد القسطرة</title>
+    <link rel="stylesheet" href="styles.css?v=2.0.2">
+</head>
+<body>
+
+    <!-- 1. شاشة تسجيل الدخول -->
+    <div id="login-screen" class="login-container">
+        <div class="login-card">
+            <span class="login-logo">🫀</span>
+            <h1 class="login-title">إدارة مخازن مواد القسطرة</h1>
+            <p class="login-subtitle">أدخل بيانات الاعتماد الخاصة بك للوصول للنظام</p>
+            
+            <form id="login-form">
+                <div class="form-group">
+                    <label class="form-label" for="login-username">اسم المستخدم</label>
+                    <input class="form-control" type="text" id="login-username" required placeholder="مثال: admin أو catheter">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="login-password">كلمة المرور</label>
+                    <input class="form-control" type="password" id="login-password" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">تسجيل الدخول</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. الحاوية الرئيسية للتطبيق -->
+    <div id="app-container" class="app-layout hidden">
+        
+        <!-- الشريط الجانبي (Sidebar) -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <span class="sidebar-logo">🫀</span>
+                <div>
+                    <h2 id="app-center-title" class="brand-title">مخازن مواد القسطرة</h2>
+                    <span style="font-size:0.7rem; color:var(--text-secondary); display:block; margin-top:2px;">نظام المتابعة والجرد والطلبيات</span>
+                </div>
+            </div>
+            
+            <div class="sidebar-user">
+                <div class="user-avatar">👤</div>
+                <div class="user-info">
+                    <span id="username-display" class="user-name">أمين المخزن</span>
+                    <div id="user-role-badge" class="user-badge admin">
+                        <span class="badge-dot"></span>
+                        <span class="badge-text">أدمن</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- قائمة التنقل الجانبية للأدمن -->
+            <div id="admin-sidebar-menu" class="sidebar-menu"></div>
+
+            <!-- قائمة التنقل الجانبية للزبون -->
+            <div id="customer-sidebar-menu" class="sidebar-menu hidden">
+                <div class="menu-group">
+                    <span class="menu-group-title">🩺 طلب وصرف المواد</span>
+                    <ul class="menu-list">
+                        <li>
+                            <button class="menu-item tab-btn active" data-tab="tab-cust-stock">
+                                <span class="menu-icon">🩺</span>
+                                <span class="menu-text">المواد المتوفرة</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button class="menu-item tab-btn icon-badge" data-tab="tab-cust-cart">
+                                <span class="menu-icon">🛒</span>
+                                <span class="menu-text">قائمة طلبية زبون</span>
+                                <span id="cust-cart-badge" class="badge-count hidden">0</span>
+                            </button>
+                        </li>
+                        <li>
+                            <button class="menu-item tab-btn" data-tab="tab-cust-orders">
+                                <span class="menu-icon">📋</span>
+                                <span class="menu-text">طلبياتي وتتبعها</span>
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <button id="theme-toggle" class="theme-btn" title="تبديل المظهر المضيء/المظلم">🌓 مظهر داكن</button>
+                <button id="btn-logout" class="logout-btn">تسجيل خروج ➔</button>
+            </div>
+        </aside>
+
+        <!-- الجزء الرئيسي للمحتوى (Main Content Area) -->
+        <div class="main-layout">
+            <header class="top-bar">
+                <div class="top-bar-start">
+                    <button id="sidebar-toggle-btn" class="sidebar-toggle-btn">☰</button>
+                    <h1 class="top-bar-title">نظام إدارة مستودعات القسطرة</h1>
+                </div>
+                <div class="top-bar-actions">
+                    <!-- مؤشر حالة المزامنة السحابية الحية (Firebase Live) -->
+                    <div id="cloud-sync-status" title="حالة الاتصال السحابي المباشر لقاعدة البيانات (اضغط للمزامنة اليدوية)" style="display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:20px; font-size:0.75rem; font-weight:700; background:rgba(16,185,129,0.12); color:#10b981; border:1px solid rgba(16,185,129,0.25); cursor:pointer; user-select:none; transition:all 0.2s ease;" onclick="if(window.state && window.state.syncWithCloud) window.state.syncWithCloud()">
+                        <span style="width:7px; height:7px; border-radius:50%; background:#10b981; display:inline-block; box-shadow:0 0 6px #10b981;"></span>
+                        <span id="cloud-sync-text">سحابي متصل</span>
+                    </div>
+
+                    <!-- أيقونة إشعارات الصلاحية -->
+                    <div class="notifications-wrapper" id="notifications-wrapper">
+                        <button type="button" id="notifications-bell-btn" class="notifications-bell-btn" title="تنبيهات صلاحية المواد (أقل من 6 أشهر)" onclick="toggleExpiryNotificationsDropdown(event)">
+                            <span class="bell-icon">🔔</span>
+                            <span id="expiry-notification-badge" class="notifications-badge hidden">0</span>
+                        </button>
+                        
+                        <!-- القائمة المنسدلة للإشعارات -->
+                        <div id="expiry-notifications-dropdown" class="notifications-dropdown hidden">
+                            <div class="notifications-dropdown-header">
+                                <div class="notifications-dropdown-title">
+                                    <span>🚨 تنبيهات الصلاحية (&lt; 6 أشهر)</span>
+                                    <span class="notifications-count-tag" id="notifications-dropdown-count">0 مواد</span>
+                                </div>
+                                <button type="button" class="notifications-close-btn" onclick="toggleExpiryNotificationsDropdown(event)">✕</button>
+                            </div>
+                            <div id="expiry-alerts-container" class="notifications-dropdown-body">
+                                <!-- التنبيهات تعبأ تلقائياً بواسطة JS -->
+                            </div>
+                            <div class="notifications-dropdown-footer">
+                                <span>المواد التي تنتهي صلاحيتها خلال أقل من 6 أشهر</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- المحتوى الأساسي -->
+            <main class="main-content">
+
+            <!-- ================= لوحة تحكم أمين المخزن (Admin) ================= -->
+            <div id="admin-dashboard" class="hidden">
+                
+                <!-- الإحصائيات الفوقية الأربعة -->
+                <div class="dashboard-grid">
+                    <div class="stat-card">
+                        <div class="stat-details">
+                            <span id="stat-grand-total-title" class="stat-title">المجموع الكلي للمواد</span>
+                            <span id="stat-grand-total" class="stat-value">0</span>
+                        </div>
+                        <span class="stat-icon">📦</span>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-details">
+                            <span id="stat-store1-title" class="stat-title">رصيد مخزن رقم 1 (الرئيسي)</span>
+                            <span id="stat-store1" class="stat-value">0</span>
+                            <span id="stat-store1-value" style="font-size:0.85rem; color:var(--text-secondary); margin-top:4px; display:block;">القيمة: 0 د.ع</span>
+                        </div>
+                        <span class="stat-icon" style="color:var(--primary);">🏦</span>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-details">
+                            <span id="stat-store2-title" class="stat-title">رصيد مخزن رقم 2 (الفرعي)</span>
+                            <span id="stat-store2" class="stat-value">0</span>
+                            <span id="stat-store2-value" style="font-size:0.85rem; color:var(--text-secondary); margin-top:4px; display:block;">القيمة: 0 د.ع</span>
+                        </div>
+                        <span class="stat-icon" style="color:var(--success);">🏬</span>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-details">
+                            <span id="stat-total-value-title" class="stat-title">إجمالي قيمة المستودعات</span>
+                            <span id="stat-total-value" class="stat-value" style="color:var(--success);">0 د.ع</span>
+                            <span style="font-size:0.85rem; color:var(--text-secondary); margin-top:4px; display:block;">إجمالي قيمة مخزن 1 + مخزن 2</span>
+                        </div>
+                        <span class="stat-icon" style="color:var(--success);">💰</span>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-details">
+                            <span class="stat-title">طلبيات زبائن معلقة</span>
+                            <span id="stat-pending-orders" class="stat-value">0</span>
+                            <span style="font-size:0.85rem; color:var(--text-secondary); margin-top:4px; display:block;">قيد المراجعة والاعتماد</span>
+                        </div>
+                        <span class="stat-icon" style="color:var(--warning);">⏳</span>
+                    </div>
+                </div>
+
+                <!-- شريط إجراءات الأدمن السريعة -->
+                <div class="flex-between" style="background-color: var(--bg-secondary); padding: 15px 24px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex: 1; max-width: 65%;">
+                        <div class="search-container" style="margin: 0; flex: 1; min-width: 180px;">
+                            <span class="search-icon">🔍</span>
+                            <input type="text" id="admin-search-input" class="search-input" placeholder="ابحث باسم المادة أو رقم الباج...">
+                        </div>
+                        <select id="admin-category-select-filter" class="form-control" style="width: 170px; padding: 8px 12px; font-size: 0.85rem; height: 38px; background-color: var(--bg-tertiary); border-color: var(--border-color); color: var(--text-primary);" onchange="triggerAdminCategorySelectFilter()">
+                            <option value="all">📁 كل التصنيفات</option>
+                        </select>
+                        <select id="admin-sort-select" class="form-control" style="width: 170px; padding: 8px 12px; font-size: 0.85rem; height: 38px; background-color: var(--bg-tertiary); border-color: var(--border-color); color: var(--text-primary);" onchange="triggerAdminSort()">
+                            <option value="none">🔄 الترتيب: الافتراضي</option>
+                            <option value="name-asc">🔤 الاسم: أبجدياً (أ - ي)</option>
+                            <option value="name-desc">🔤 الاسم: أبجدياً (ي - أ)</option>
+                            <option value="qty-desc">📈 الكمية: من الأكثر للأقل</option>
+                            <option value="qty-asc">📉 الكمية: من الأقل للأكثر</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                        <select id="report-source-filter" class="form-control" style="width: 145px; padding: 8px 12px; font-size: 0.85rem; height: 38px; background-color: var(--bg-tertiary); border-color: var(--border-color);">
+                            <option value="الكل">كل مصادر الجرد</option>
+                            <option value="عامة">جرد: عامة</option>
+                            <option value="مشتريات">جرد: مشتريات</option>
+                            <option value="فاتورة">جرد: فاتورة</option>
+                        </select>
+                        <button class="btn btn-secondary" style="background-color: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);" onclick="exportPDFReport()">🖨️ طباعة تقرير PDF</button>
+                        <button class="btn btn-secondary" onclick="openCategoriesSettingsModal()">⚙️ إدارة قائمة التصنيفات</button>
+                        <button class="btn btn-primary" onclick="const btn = document.querySelector('.tab-btn[data-tab=\'tab-add-material\']'); if (btn) btn.click();">➕ توريد وإدخال مادة جديدة</button>
+                    </div>
+                </div>
+
+                <!-- التبويبات والمخازن -->
+                <div class="tabs-container">
+                    <!-- محتويات التبويب 1: مخزن 1 -->
+                    <div id="tab-store1" class="tab-pane active">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">📦 جرد ومواد المستودع الرئيسي (مخزن رقم 1)</h3>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>إسم المادة</th>
+                                            <th>رقم التشغيلة (الباج)</th>
+                                            <th>تاريخ الصلاحية</th>
+                                            <th>الكمية المتوفرة</th>
+                                            <th>سعر المفرد (د.ع)</th>
+                                            <th>القيمة الإجمالية (د.ع)</th>
+                                            <th>الشركة المصنعة</th>
+                                            <th>إجراءات مخزن 1</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="store1-tbody">
+                                        <!-- تعبأ ديناميكياً بواسطة JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!-- ترقيم الصفحات لمخزن 1 -->
+                            <div class="pagination-container" style="display:flex; justify-content:space-between; align-items:center; padding:12px 15px; background:var(--bg-secondary); border-top:1px solid var(--border-color); flex-wrap:wrap; gap:10px; direction: rtl; border-bottom-left-radius:var(--radius-md); border-bottom-right-radius:var(--radius-md);">
+                                <div style="display:flex; align-items:center; gap:5px;" id="store1-pagination-buttons"></div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="font-size:0.85rem; color:var(--text-secondary);">عرض المواد:</span>
+                                    <select id="store1-rows-per-page" class="form-control" style="width:80px; padding:4px 8px; font-size:0.85rem; height:32px; cursor:pointer;" onchange="changeStorePageSize('store1')">
+                                        <option value="10">10</option>
+                                        <option value="15">15</option>
+                                        <option value="20">20</option>
+                                        <option value="50">50</option>
+                                        <option value="all">الكل</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- محتويات التبويب 2: مخزن 2 -->
+                    <div id="tab-store2" class="tab-pane">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">🏬 جرد ومواد مستودع الصرف والفرعي (مخزن رقم 2)</h3>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>إسم المادة</th>
+                                            <th>رقم التشغيلة (الباج)</th>
+                                            <th>تاريخ الصلاحية</th>
+                                            <th>الكمية المتوفرة</th>
+                                            <th>سعر المفرد (د.ع)</th>
+                                            <th>القيمة الإجمالية (د.ع)</th>
+                                            <th>الشركة المصنعة</th>
+                                            <th>إجراءات مخزن 2</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="store2-tbody">
+                                        <!-- تعبأ ديناميكياً بواسطة JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!-- ترقيم الصفحات لمخزن 2 -->
+                            <div class="pagination-container" style="display:flex; justify-content:space-between; align-items:center; padding:12px 15px; background:var(--bg-secondary); border-top:1px solid var(--border-color); flex-wrap:wrap; gap:10px; direction: rtl; border-bottom-left-radius:var(--radius-md); border-bottom-right-radius:var(--radius-md);">
+                                <div style="display:flex; align-items:center; gap:5px;" id="store2-pagination-buttons"></div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="font-size:0.85rem; color:var(--text-secondary);">عرض المواد:</span>
+                                    <select id="store2-rows-per-page" class="form-control" style="width:80px; padding:4px 8px; font-size:0.85rem; height:32px; cursor:pointer;" onchange="changeStorePageSize('store2')">
+                                        <option value="10">10</option>
+                                        <option value="15">15</option>
+                                        <option value="20">20</option>
+                                        <option value="50">50</option>
+                                        <option value="all">الكل</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- محتويات التبويب 3: المجموع الكلي -->
+                    <div id="tab-grand-total" class="tab-pane">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">📊 مجموع المواد الكلي في كافة المخازن (دمج الكميات)</h3>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>إسم المادة</th>
+                                            <th>الشركة</th>
+                                            <th>إجمالي الكمية (مخزن 1+2)</th>
+                                            <th>الكمية في مخزن 1</th>
+                                            <th>الكمية في مخزن 2</th>
+                                            <th>سعر المفرد المتوسط (د.ع)</th>
+                                            <th>إجمالي القيمة (د.ع)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="grand-total-tbody">
+                                        <!-- تعبأ ديناميكياً بواسطة JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!-- ترقيم الصفحات للمجموع الكلي -->
+                            <div class="pagination-container" style="display:flex; justify-content:space-between; align-items:center; padding:12px 15px; background:var(--bg-secondary); border-top:1px solid var(--border-color); flex-wrap:wrap; gap:10px; direction: rtl; border-bottom-left-radius:var(--radius-md); border-bottom-right-radius:var(--radius-md);">
+                                <div style="display:flex; align-items:center; gap:5px;" id="grand-total-pagination-buttons"></div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="font-size:0.85rem; color:var(--text-secondary);">عرض المواد:</span>
+                                    <select id="grand-total-rows-per-page" class="form-control" style="width:80px; padding:4px 8px; font-size:0.85rem; height:32px; cursor:pointer;" onchange="changeStorePageSize('grand-total')">
+                                        <option value="10">10</option>
+                                        <option value="15">15</option>
+                                        <option value="20">20</option>
+                                        <option value="50">50</option>
+                                        <option value="all">الكل</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- محتويات التبويب 4: طلبات الزبائن -->
+                    <div id="tab-orders" class="tab-pane">
+                        <div class="orders-layout-grid">
+                            
+                            <!-- عمود القائمة (الطلبات بالتسلسل) -->
+                            <div class="card" style="margin: 0; display: flex; flex-direction: column;">
+                                <div class="card-header">
+                                    <h3 class="card-title" style="font-size: 1rem;">📋 طلبيات الزبائن الواردة</h3>
+                                </div>
+                                <div class="card-body" style="padding: 10px; overflow-y: auto; max-height: 480px; flex: 1;">
+                                    <div style="margin-bottom:12px;">
+                                        <input type="text" id="admin-orders-material-filter" class="form-control" placeholder="🔍 تصفية حسب اسم المادة المطلوبة..." style="padding: 8px 12px; font-size: 0.85rem;" oninput="renderAdminOrdersTable()">
+                                    </div>
+                                    <div id="admin-orders-list-group" style="display: flex; flex-direction: column; gap: 8px;">
+                                        <!-- تعبأ تلقائياً بواسطة JS كقائمة تفاعلية -->
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- عمود تفاصيل الطلب المحدد -->
+                            <div class="card" style="margin: 0;">
+                                <div class="card-header">
+                                    <h3 class="card-title" style="font-size: 1rem;">🔍 تفاصيل طلب الزبون المحدد</h3>
+                                </div>
+                                <div class="card-body" id="admin-order-details-panel" style="display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 300px; color: var(--text-secondary); text-align: center; padding: 25px;">
+                                    <span style="font-size: 3rem; margin-bottom: 15px;">📋</span>
+                                    <p>الرجاء تحديد أحد الطلبات الواردة من القائمة الجانبية لعرض تفاصيل المواد واتخاذ إجراءات الموافقة والصرف أو الرفض.</p>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- محتويات التبويب 5: تخمين الصرفية -->
+                    <div id="tab-forecast" class="tab-pane">
+                        <div class="card">
+                            <div class="card-header" style="background: linear-gradient(to left, rgba(59, 130, 246, 0.1), transparent); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                                <h3 class="card-title">🔮 التنبؤ بالاستهلاك الذكي وتخمين الهدر وتلف الصلاحيات</h3>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-size: 0.85rem; color: var(--text-secondary);">تصفية حسب التخمين:</span>
+                                    <select id="forecast-status-filter" class="form-control" style="width: 180px; padding: 4px 8px; font-size: 0.85rem; height: 34px; cursor: pointer; background: var(--bg-tertiary); border-color: var(--border-color); color: var(--text-primary);" onchange="paginationConfig.forecast.page = 1; renderForecastPanel()">
+                                        <option value="all">📁 عرض الكل</option>
+                                        <option value="verdict-safe">🟢 آمن (يستهلك بالكامل)</option>
+                                        <option value="verdict-risk">🟡 هدر جزئي متوقع</option>
+                                        <option value="verdict-danger">🔴 خطر هدر وتلف كبير</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom: 20px; line-height: 1.6;">
+                                    تقوم هذه الخوارزمية بتحليل سجل حركات الصرف الفعلية للزبائن، واحتساب <strong>معدل الصرف الشهري الفعلي</strong> لكل مادة. 
+                                    ثم تقارنه بالفترة الزمنية المتبقية لصلاحية كل دفعة (الاكسباير) لتحديد الكميات المعرضة للتلف أو الهدر قبل إمكانية صرفها بالكامل.
+                                </p>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>إسم المادة</th>
+                                            <th>الباج</th>
+                                            <th>المخزن</th>
+                                            <th>الكمية الحالية</th>
+                                            <th>تاريخ الاكسباير</th>
+                                            <th>معدل الاستهلاك الفعلي</th>
+                                            <th>تخمين حالة الهدر والصلاحية</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="forecast-tbody">
+                                        <!-- تعبأ ديناميكياً بواسطة JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!-- ترقيم الصفحات للتنبؤ بالتخمين -->
+                            <div class="pagination-container" style="display:flex; justify-content:space-between; align-items:center; padding:12px 15px; background:var(--bg-secondary); border-top:1px solid var(--border-color); flex-wrap:wrap; gap:10px; direction: rtl; border-bottom-left-radius:var(--radius-md); border-bottom-right-radius:var(--radius-md);">
+                                <div style="display:flex; align-items:center; gap:5px;" id="forecast-pagination-buttons"></div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="font-size:0.85rem; color:var(--text-secondary);">عرض المواد:</span>
+                                    <select id="forecast-rows-per-page" class="form-control" style="width:80px; padding:4px 8px; font-size:0.85rem; height:32px; cursor:pointer;" onchange="changeStorePageSize('forecast')">
+                                        <option value="10">10</option>
+                                        <option value="15">15</option>
+                                        <option value="20">20</option>
+                                        <option value="50">50</option>
+                                        <option value="all">الكل</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- محتويات التبويب 6: السجلات -->
+                    <div id="tab-transactions" class="tab-pane">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">📜 سجل حركات الصرف والتحويل والإدخال للمراجعة والتدقيق</h3>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>التاريخ</th>
+                                            <th>نوع الحركة</th>
+                                            <th>المادة</th>
+                                            <th>الباج</th>
+                                            <th>الكمية</th>
+                                            <th>المسار (من ➔ إلى)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="transactions-tbody">
+                                        <!-- تعبأ ديناميكياً بواسطة JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- محتويات التبويب 7: تقارير الصرف للمرضى والعمليات -->
+                    <div id="tab-issue-reports" class="tab-pane">
+                        <div class="card">
+                            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                                <h3 class="card-title">📋 تقارير صرف المواد للمرضى والعمليات</h3>
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="expandAllIssueReportCards()" style="padding:6px 12px; font-size:0.8rem; background:var(--bg-tertiary); border:1px solid var(--border-color); cursor:pointer;">📂 فتح كافة القوائم</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="collapseAllIssueReportCards()" style="padding:6px 12px; font-size:0.8rem; background:var(--bg-tertiary); border:1px solid var(--border-color); cursor:pointer;">📁 طي كافة القوائم</button>
+                                    <button class="btn btn-primary" onclick="exportIssueReportPDF()" style="padding:6px 12px; font-size:0.85rem;">🖨️ طباعة تقرير الصرف PDF</button>
+                                </div>
+                            </div>
+                            
+                            <!-- شريط التصفية لتقارير الصرف -->
+                            <div class="card-body" style="background:var(--bg-tertiary); border-bottom:1px solid var(--border-color); padding:15px;">
+                                <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap:12px;">
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" style="font-size:0.8rem;">تصفية حسب المادة (كتابة الاسم)</label>
+                                        <input type="text" id="issue-report-material-filter" class="form-control" placeholder="اكتب اسم المادة لفلترتها..." oninput="renderIssueReportsTable()">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" style="font-size:0.8rem;">تصفية حسب التصنيف</label>
+                                        <select id="issue-report-category-filter" class="form-control" onchange="renderIssueReportsTable()">
+                                            <!-- يعبأ ديناميكياً -->
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" style="font-size:0.8rem;">ترتيب القوائم حسب التاريخ</label>
+                                        <select id="issue-report-sort-order" class="form-control" onchange="renderIssueReportsTable()">
+                                            <option value="desc" selected>📅 من الأحدث إلى الأقدم ⬇️</option>
+                                            <option value="asc">📅 من الأقدم إلى الأحدث ⬆️</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" style="font-size:0.8rem;">من تاريخ</label>
+                                        <input type="date" id="issue-report-date-from" class="form-control" onchange="renderIssueReportsTable()">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" style="font-size:0.8rem;">إلى تاريخ</label>
+                                        <input type="date" id="issue-report-date-to" class="form-control" onchange="renderIssueReportsTable()">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- حاوية قوائم الصرف اليومية -->
+                            <div id="issue-reports-container" class="issue-reports-container" style="padding: 15px; display: flex; flex-direction: column; gap: 20px;">
+                                <!-- تعبأ ديناميكياً بالقوائم اليومية بواسطة JS -->
+                            </div>
+
+                            <!-- إحصائيات تقرير الصرف الإجمالية -->
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:15px; background:var(--bg-secondary); border-top:1px solid var(--border-color); flex-wrap:wrap; gap:15px;">
+                                <div style="font-size:0.9rem; font-weight:700; color:var(--text-primary);">
+                                    إجمالي القوائم اليومية: <span id="issue-report-total-days" style="color:var(--accent);">0</span> قائمة
+                                </div>
+                                <div style="font-size:0.9rem; font-weight:700; color:var(--text-primary);">
+                                    إجمالي المواد المصروفة: <span id="issue-report-total-qty" style="color:var(--primary);">0</span> قطعة
+                                </div>
+                                <div style="font-size:0.9rem; font-weight:700; color:var(--text-primary);">
+                                    إجمالي القيمة المالية: <span id="issue-report-total-value" style="color:var(--success);">0</span> د.ع
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- محتويات التبويب 8: إدخال وتوريد مادة جديدة (تصميم جدول الفاتورة الشبكي) -->
+                    <div id="tab-add-material" class="tab-pane">
+                        <div class="card" style="background: var(--bg-secondary); border: 1px solid var(--border-color); margin: 0;">
+                            
+                            <!-- رأس الفاتورة -->
+                            <div class="card-header" style="background: linear-gradient(to left, rgba(59, 130, 246, 0.1), transparent); padding: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; border-bottom: 1px solid var(--border-color);">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span style="font-size: 1.5rem;">📝</span>
+                                    <h3 class="card-title" style="font-size: 1.1rem; margin: 0;">إنشاء وقيد قائمة إدخال وتوريد المواد</h3>
+                                </div>
+                                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; direction: ltr;">
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <input type="text" id="add-tab-list-id" readonly style="width: 120px; height: 32px; padding: 4px 8px; font-size: 0.85rem; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 4px; text-align: center;" />
+                                        <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-secondary); white-space: nowrap;">:رقم القائمة</label>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <select id="add-tab-source-type" style="width: 160px; height: 32px; padding: 4px 8px; font-size: 0.85rem; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; text-align: right; cursor: pointer;">
+                                            <option value="عامة">عامة</option>
+                                            <option value="مشتريات">مشتريات</option>
+                                            <option value="فاتورة">فاتورة</option>
+                                        </select>
+                                        <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-primary); white-space: nowrap;">:نوع التوريد</label>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <input type="text" id="add-tab-receipt-number" required placeholder="مثال: وصل 124" style="width: 150px; height: 32px; padding: 4px 8px; font-size: 0.85rem; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; text-align: right;" />
+                                        <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-primary); white-space: nowrap;">:رقم الوصل / الفاتورة</label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- جدول الفاتورة الشبكي -->
+                            <div class="card-body" style="padding: 15px; overflow: visible;">
+                                <div class="table-responsive" style="overflow-x: auto; margin-bottom: 15px; min-height: 250px;">
+                                    <table class="table" style="min-width: 1250px; border-collapse: collapse;">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 20%; text-align: right;">اسم المادة الطبية</th>
+                                                <th style="width: 12%; text-align: right;">الشركة المصنعة</th>
+                                                <th style="width: 10%; text-align: right;">رقم التشغيلة (الباج)</th>
+                                                <th style="width: 12%; text-align: right;">تاريخ الصلاحية</th>
+                                                <th style="width: 10%; text-align: right;">التخزين</th>
+                                                <th style="width: 11%; text-align: right;">التصنيف</th>
+                                                <th style="width: 8%; text-align: right;">سعر المفرد (د.ع)</th>
+                                                <th style="width: 6%; text-align: center;">الكمية</th>
+                                                <th style="width: 8%; text-align: left; padding-left: 15px;">المجموع</th>
+                                                <th style="width: 4%; text-align: center;">إجراء</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="invoice-grid-tbody">
+                                            <!-- تضاف الصفوف ديناميكياً هنا -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                                
+                                <!-- زر إضافة سطر جديد -->
+                                <div style="display: flex; justify-content: flex-start; margin-bottom: 25px;">
+                                    <button class="btn btn-primary" type="button" onclick="addNewInvoiceRow()" style="padding: 8px 16px; font-size: 0.85rem; font-weight: 700; background-color: var(--primary); display: flex; align-items: center; gap: 6px;">
+                                        <span style="font-size: 1.1rem; font-weight: bold;">➕</span> إضافة مادة للوصل
+                                    </button>
+                                </div>
+                                
+                                <!-- ملخص الفاتورة وأزرار الاعتماد النهائي -->
+                                <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 20px; border-top: 1px solid var(--border-color); flex-wrap: wrap; gap: 20px;">
+                                    <!-- الجانب الأيمن: أزرار التحكم -->
+                                    <div style="display: flex; gap: 12px; order: 2;">
+                                        <button class="btn btn-secondary" type="button" onclick="cancelEntireReceiptDraft()" style="background-color: var(--danger-bg); color: #fca5a5; font-size: 0.85rem; padding: 8px 16px; border: 1px solid rgba(239,68,68,0.2);">❌ إلغاء وتفريغ القائمة</button>
+                                        <button class="btn btn-primary" type="button" onclick="submitFinalizeReceiptDraft(true)" style="background-color: var(--accent); color: #ffffff; border-color: var(--accent); font-weight: 700; font-size: 0.85rem; padding: 8px 16px;">💾 حفظ كمسودة مؤقتة</button>
+                                        <button class="btn btn-primary" type="button" onclick="submitFinalizeReceiptDraft(false)" style="background-color: var(--success); color: #ffffff; border-color: var(--success); font-weight: 700; font-size: 0.85rem; padding: 8px 18px;">🚀 اعتماد وترحيل للمخازن</button>
+                                    </div>
+                                    
+                                    <!-- الجانب الأيسر: الإجماليات -->
+                                    <div style="background: rgba(0,0,0,0.15); padding: 12px 20px; border-radius: 6px; border: 1px solid var(--border-color); min-width: 250px; display: flex; flex-direction: column; gap: 6px; text-align: left; direction: ltr; order: 1;">
+                                        <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--text-secondary); direction: rtl;">
+                                            <span>إجمالي كمية المواد:</span>
+                                            <strong><span id="draft-total-qty" style="color: var(--primary);">0</span> قطعة</strong>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; font-size: 0.95rem; font-weight: 700; color: var(--text-primary); border-top: 1px dashed var(--border-color); padding-top: 6px; direction: rtl;">
+                                            <span>القيمة الإجمالية للوصل:</span>
+                                            <strong><span id="draft-total-value" style="color: var(--success);">0</span> د.ع</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                        </div>
+                    </div>
+
+                    <!-- محتويات التبويب 9: قوائم الإدخال والفواتير المحفوظة -->
+                    <div id="tab-saved-receipts" class="tab-pane">
+                        <div class="card" style="background: linear-gradient(135deg, var(--bg-secondary) 0%, #0f172a 100%); border: 1px solid var(--border-color); margin: 0;">
+                            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                                <h3 class="card-title">📋 إدارة الفواتير وقوائم التوريد</h3>
+                                <div style="display:flex; gap:10px;">
+                                    <button class="btn btn-danger" onclick="clearAllInvoices()" style="font-size:0.85rem; padding:6px 12px; background-color:var(--danger); color:#ffffff; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">🗑️ مسح كافة الفواتير</button>
+                                    <button class="btn btn-secondary" onclick="initNewReceiptDraft(); const btn = document.querySelector('.tab-btn[data-tab=\'tab-add-material\']'); if (btn) btn.click();" style="font-size:0.85rem; padding:6px 12px; background-color: var(--primary); color:#ffffff; border-color:var(--primary);">➕ توريد قائمة جديدة</button>
+                                </div>
+                            </div>
+                            
+                            <div id="saved-receipts-container" class="erp-invoice-list">
+                                <!-- تعبأ الكروت ديناميكياً بواسطة JS -->
+                            </div>
+
+                            <!-- ترقيم الصفحات لقوائم الفواتير -->
+                            <div class="pagination-container" style="display:flex; justify-content:space-between; align-items:center; padding:12px 15px; background:var(--bg-secondary); border-top:1px solid var(--border-color); flex-wrap:wrap; gap:10px; direction: rtl; border-bottom-left-radius:var(--radius-md); border-bottom-right-radius:var(--radius-md);">
+                                <div style="display:flex; align-items:center; gap:5px;" id="invoices-pagination-buttons"></div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="font-size:0.85rem; color:var(--text-secondary);">عرض القوائم:</span>
+                                    <select id="invoices-rows-per-page" class="form-control" style="width:90px; padding:4px 8px; font-size:0.85rem; height:32px; cursor:pointer;" onchange="changeStorePageSize('invoices')">
+                                        <option value="10">10 قائمة</option>
+                                        <option value="15">15 قائمة</option>
+                                        <option value="20">20 قائمة</option>
+                                        <option value="all">الكل</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+
+            </div>
+
+            <!-- ================= لوحة تحكم الزبون (Customer) ================= -->
+            <div id="customer-dashboard" class="hidden">
+                
+                <div class="tabs-container" style="margin-bottom: 20px;">
+
+                    <!-- التبويب 1: أرصدة المواد المتوفرة -->
+                    <div id="tab-cust-stock" class="tab-pane active">
+                        <div class="card" style="background: linear-gradient(135deg, var(--bg-secondary) 0%, #1e293b 100%);">
+                            <div class="card-header">
+                                <h3 class="card-title">🩺 رصيد وجرد المواد الطبية المتوفرة بمخازن المستشفى</h3>
+                            </div>
+                            <div class="card-body">
+                                <p style="color:var(--text-secondary); margin-bottom: 20px; font-size:0.9rem;">
+                                    تصفح المواد الطبية المتوفرة، وقم بإضافة المواد للطلبية بالعدد المطلوب وتعديلها من قائمة طلبية زبون قبل إرسالها.
+                                </p>
+                                
+                                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; max-width: 700px;">
+                                    <div class="search-container" style="margin: 0; flex: 1; min-width: 250px;">
+                                        <span class="search-icon">🔍</span>
+                                        <input type="text" id="customer-search-input" class="search-input" placeholder="ابحث عن مادة قسطرة متوفرة...">
+                                    </div>
+                                    <select id="customer-category-select-filter" class="form-control" style="width: 200px; padding: 8px 12px; font-size: 0.85rem; height: 38px; background-color: var(--bg-tertiary); border-color: var(--border-color); color: var(--text-primary);" onchange="triggerCustomerCategorySelectFilter()">
+                                        <option value="all">📁 كل التصنيفات</option>
+                                    </select>
+                                </div>
+
+                                <div class="table-responsive">
+                                    <table class="table">
+                                        <thead>
+                                            <tr>
+                                                <th>إسم المادة الطبية</th>
+                                                <th>الشركة المصنعة</th>
+                                                <th>إجمالي الرصيد المتوفر</th>
+                                                <th>تفاصيل الدفعات والاكسباير المتاحة للصرف</th>
+                                                <th>الإجراء</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="customer-stock-tbody">
+                                            <!-- تعبأ تلقائياً بواسطة JS -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- التبويب 2: قائمة طلبية زبون (سلة الطلبية الحالية) -->
+                    <div id="tab-cust-cart" class="tab-pane">
+                        <div class="card" style="background: linear-gradient(135deg, var(--bg-secondary) 0%, #0f172a 100%);">
+                            <div class="card-header">
+                                <h3 class="card-title">🛒 قائمة طلبية زبون (تعديل الطلبية ومراجعتها)</h3>
+                            </div>
+                            <div class="card-body">
+                                <p style="color:var(--text-secondary); margin-bottom: 20px; font-size:0.9rem;">
+                                    مراجعة وتعديل كميات المواد الطبية المختارة أو مسحها قبل إتمام عملية الإرسال للمستودع.
+                                </p>
+                                <div class="table-responsive">
+                                    <table class="table">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 50%;">إسم المادة الطبية المطلوبة</th>
+                                                <th style="width: 25%; text-align: center;">الكمية المطلوبة (العدد)</th>
+                                                <th style="width: 25%; text-align: left;">إجراءات</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="cust-cart-tbody">
+                                            <!-- تعبأ تلقائياً بواسطة JS -->
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <!-- خيارات إرسال الطلبية للمخزن -->
+                                <div id="cart-actions-container" style="margin-top: 30px; display:flex; justify-content: flex-end; gap: 15px; flex-wrap: wrap; padding: 20px; background: rgba(0,0,0,0.15); border-radius: 8px; border:1px solid var(--border-color);">
+                                    <button class="btn btn-secondary" onclick="checkoutCart(false)">📴 إرسال طلب للمخزن (بدون واتساب)</button>
+                                    <button class="btn btn-primary" style="background-color: var(--success); color:#ffffff; border-color:var(--success);" onclick="checkoutCart(true)">📱 إرسال طلب للمخزن (مع واتساب كـ PDF) 📄</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- التبويب 3: طلبياتي السابقة وتتبع التجهيز -->
+                    <div id="tab-cust-orders" class="tab-pane">
+                        <div class="orders-layout-grid">
+                            
+                            <!-- عمود القائمة (الطلبات بالتسلسل) -->
+                            <div class="card" style="margin: 0; display: flex; flex-direction: column;">
+                                <div class="card-header">
+                                    <h3 class="card-title" style="font-size: 1rem;">📋 الطلبات السابقة</h3>
+                                </div>
+                                <div class="card-body" style="padding: 10px; overflow-y: auto; max-height: 480px; flex: 1;">
+                                    <div id="customer-orders-list-group" style="display: flex; flex-direction: column; gap: 8px;">
+                                        <!-- تعبأ تلقائياً بواسطة JS كقائمة تفاعلية -->
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- عمود تفاصيل الطلب المحدد -->
+                            <div class="card" style="margin: 0;">
+                                <div class="card-header">
+                                    <h3 class="card-title" style="font-size: 1rem;">🔍 تفاصيل الطلب المحدد</h3>
+                                </div>
+                                <div class="card-body" id="customer-order-details-panel" style="display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 300px; color: var(--text-secondary); text-align: center; padding: 25px;">
+                                    <span style="font-size: 3rem; margin-bottom: 15px;">📋</span>
+                                    <p>الرجاء تحديد أحد الطلبات من القائمة الجانبية لعرض تفاصيل المواد والكميات وحالة الصرف هنا.</p>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </main>
+    </div>
+
+    <!-- ================= النوافذ المنبثقة (Modals) ================= -->
+
+    <!-- 1. مودال إضافة مادة جديدة (الأدمن) -->
+    <div id="add-material-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">➕ توريد وإدخال مادة جديدة للمخازن</h3>
+                <button class="btn-icon" onclick="closeModal('add-material-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="add-material-form">
+                    <div class="form-group">
+                        <label class="form-label">اسم المادة الطبية</label>
+                        <input class="form-control" type="text" id="add-name" required placeholder="مثال: قسطرة تشخيصية JL4 6F">
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">رقم التشغيلة (الباج)</label>
+                            <input class="form-control" type="text" id="add-batch" required placeholder="مثال: B1293K">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">تاريخ الصلاحية (الاكسباير)</label>
+                            <input class="form-control" type="date" id="add-expiry" required>
+                        </div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">الكمية المدخلة (العدد)</label>
+                            <input class="form-control" type="number" id="add-qty" min="1" required placeholder="مثال: 50">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">الشركة المصنعة</label>
+                            <input class="form-control" type="text" id="add-company" required placeholder="مثال: Medtronic">
+                        </div>
+                    </div>
+                    <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
+                        <div class="form-group">
+                            <label class="form-label">تخزين في</label>
+                            <select class="form-control" id="add-store-select">
+                                <option value="store1">مخزن رقم 1 (الرئيسي)</option>
+                                <option value="store2">مخزن رقم 2 (الفرعي)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">تصنيف المادة</label>
+                            <select class="form-control" id="add-category-select" required>
+                                <!-- يعبأ ديناميكياً -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">مصدر المادة (الجهة)</label>
+                            <select class="form-control" id="add-source-select" required>
+                                <option value="عامة" selected>عامة</option>
+                                <option value="مشتريات">مشتريات</option>
+                                <option value="فاتورة">فاتورة</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">سعر المفرد للمادة (دينار عراقي د.ع)</label>
+                            <input class="form-control" type="number" id="add-price" min="0" value="0" required placeholder="مثال: 25000">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('add-material-modal')">إلغاء</button>
+                <button class="btn btn-primary" onclick="submitAddMaterialForm()">تأكيد الحفظ وإدخال</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. مودال الجرد وتعديل الكمية الفعلي (الأدمن) -->
+    <div id="reconcile-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">✍ جرد وتصحيح رصيد المادة الفعلي</h3>
+                <button class="btn-icon" onclick="closeModal('reconcile-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 15px; font-size:0.9rem; color:var(--text-secondary);">
+                    تعديل كمية المادة بعد إجراء الجرد الفعلي للمخازن. سيتم تسجيل الحركة في سجل المراجعة تلقائياً.
+                </p>
+                <div style="background:var(--bg-tertiary); padding:15px; border-radius:8px; margin-bottom:15px; font-size:0.9rem;">
+                    <strong>المادة:</strong> <span id="reconcile-name-display"></span> <br>
+                    <strong>الباج:</strong> <code id="reconcile-batch-display"></span></code> <br>
+                    <strong>الموقع:</strong> <span id="reconcile-store-display"></span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">العدد الفعلي الجديد (بعد الجرد)</label>
+                    <input class="form-control" type="number" id="reconcile-qty" min="0" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('reconcile-modal')">إلغاء</button>
+                <button class="btn btn-primary" onclick="submitReconcileForm()">تحديث رصيد الجرد</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. مودال التحويل من مخزن 1 إلى مخزن 2 (الأدمن) -->
+    <div id="transfer-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">⇄ تحويل المواد من مخزن 1 إلى مخزن 2</h3>
+                <button class="btn-icon" onclick="closeModal('transfer-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div style="background:var(--bg-tertiary); padding:15px; border-radius:8px; margin-bottom:15px; font-size:0.9rem;">
+                    <strong>المادة المراد تحويلها:</strong> <span id="transfer-name-display"></span> <br>
+                    <strong>رقم الباج:</strong> <code id="transfer-batch-display"></code> <br>
+                    <strong>الرصيد المتاح حالياً بمخزن 1:</strong> <strong id="transfer-max-qty" style="color:var(--primary);"></strong> قطعة
+                </div>
+                <div class="form-group">
+                    <label class="form-label">الكمية المراد نقلها إلى مخزن 2</label>
+                    <input class="form-control" type="number" id="transfer-qty" min="1" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('transfer-modal')">إلغاء</button>
+                <button class="btn btn-primary" onclick="submitTransferForm()">تأكيد التحويل المخزني</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. مودال الصرف المباشر من الأدمن لزبون -->
+    <div id="direct-issue-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">📤 صرف مواد مباشرة إلى جهة مستفيدة</h3>
+                <button class="btn-icon" onclick="closeModal('direct-issue-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div style="background:var(--bg-tertiary); padding:15px; border-radius:8px; margin-bottom:15px; font-size:0.9rem;">
+                    <strong>المادة المصروفة:</strong> <span id="issue-name-display"></span> <br>
+                    <strong>رقم الباج:</strong> <code id="issue-batch-display"></code> <br>
+                    <strong>موقع الصرف:</strong> <span id="issue-store-display"></span> <br>
+                    <strong>الرصيد المتاح بالمخزن:</strong> <strong id="issue-max-qty"></strong> قطعة
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">الجهة المستلمة (الزبون)</label>
+                    <select class="form-control" id="issue-customer-select">
+                        <option value="شعبة القسطرة">شعبة القسطرة</option>
+                        <option value="المناقلات">شعبة المناقلات</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">الكمية المراد صرفها</label>
+                    <input class="form-control" type="number" id="issue-qty" min="1" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('direct-issue-modal')">إلغاء</button>
+                <button class="btn btn-primary" onclick="submitDirectIssueForm()">تأكيد الصرف وتعديل المخزن</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. مودال تفويض واعتماد طلبيات الزبائن (الأدمن) -->
+    <div id="approve-order-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">✓ اعتماد وتجهيز طلبية الزبون</h3>
+                <button class="btn-icon" onclick="closeModal('approve-order-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 15px; font-size: 0.95rem;">
+                    أنت بصدد الموافقة على صرف الطلب لـ: <strong id="approve-customer-name" style="color:var(--accent);"></strong>
+                </p>
+                <div style="background:var(--bg-tertiary); padding:15px; border-radius:8px; margin-bottom:15px;">
+                    <span style="font-size:0.85rem; font-weight:700; color:var(--text-secondary); display:block; margin-bottom:8px;">تفاصيل الطلب:</span>
+                    <ul id="approve-items-list" style="margin-right:20px; font-size:0.9rem; line-height:1.6;">
+                        <!-- تعبأ ديناميكياً -->
+                    </ul>
+                </div>
+                <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom: 10px;">
+                    سيقوم النظام تلقائياً بخصم وصرف الكميات المطلوبة من **مخزن 2 (الفرعي)** أولاً كأولوية، ومن ثم سحب أي نقص متبقي من **مخزن 1 (الرئيسي)**.
+                </p>
+            </div>
+            <div class="modal-footer" style="justify-content: space-between;">
+                <button class="btn btn-secondary" onclick="closeModal('approve-order-modal')">إلغاء</button>
+                <button class="btn btn-primary" style="background-color: var(--success);" onclick="submitApproveOrder()">✓ تأكيد موافقة وصرف الطلب تلقائياً</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. مودال تحديد عدد المواد المراد إضافتها لقائمة طلبية الزبون -->
+    <div id="customer-order-modal" class="modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h3 class="modal-title">🛒 إضافة مادة للطلبية</h3>
+                <button class="btn-icon" onclick="closeModal('customer-order-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div style="background:var(--bg-tertiary); padding:15px; border-radius:8px; margin-bottom:15px;">
+                    <strong>المادة المراد إضافتها:</strong> <span id="order-item-name" style="font-weight:700; color:var(--primary);"></span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">الكمية المطلوبة (العدد):</label>
+                    <input class="form-control" type="number" id="order-item-qty" min="1" value="1" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('customer-order-modal')">إلغاء</button>
+                <button class="btn btn-primary" onclick="submitCustomerOrderForm()">إضافة إلى القائمة ➕</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. مودال إدارة قائمة تصنيفات المواد (الأدمن) -->
+    <div id="categories-settings-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3 class="modal-title">⚙️ إعدادات قائمة تصنيفات المواد</h3>
+                <button class="btn-icon" onclick="closeModal('categories-settings-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <!-- نموذج إضافة تصنيف جديد -->
+                <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border-color);">
+                    <span class="form-label">إضافة تصنيف جديد:</span>
+                    <div style="display: flex; gap: 8px;">
+                        <input class="form-control" type="text" id="new-category-name" placeholder="مثال: صمامات قلب، بالونات توسيع...">
+                        <button class="btn btn-primary" onclick="submitAddCategoryForm()">➕ إضافة</button>
+                    </div>
+                </div>
+                
+                <!-- قائمة التصنيفات الحالية -->
+                <span class="form-label">قائمة التصنيفات الحالية:</span>
+                <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                    <table class="table">
+                        <thead>
+                           <tr>
+                               <th>إسم التصنيف</th>
+                               <th style="text-align:left;">إجراء</th>
+                           </tr>
+                        </thead>
+                        <tbody id="settings-categories-tbody">
+                           <!-- تعبأ ديناميكياً -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('categories-settings-modal')">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 8. مودال إعدادات النظام العامة وإدارة حسابات الزبائن (الأدمن) -->
+    <div id="system-settings-modal" class="modal">
+        <div class="modal-content" style="max-width: 650px;">
+            <div class="modal-header">
+                <h3 class="modal-title">⚙️ لوحة إعدادات النظام العامة</h3>
+                <button class="btn-icon" onclick="closeModal('system-settings-modal')">✕</button>
+            </div>
+            
+            <!-- ألسنة التبويب الفرعية داخل المودال -->
+            <div style="display:flex; border-bottom:1px solid var(--border-color); background:rgba(0,0,0,0.15);">
+                <button class="tab-btn active" style="flex:1; border-bottom:none; border-radius:0; padding:12px 10px;" onclick="switchSettingsTab(event, 'settings-subtab-identity')">🏢 الهوية وشكل التقارير</button>
+                <button class="tab-btn" style="flex:1; border-bottom:none; border-radius:0; padding:12px 10px;" onclick="switchSettingsTab(event, 'settings-subtab-sidebar')">🧭 تخصيص القائمة الجانبية</button>
+                <button class="tab-btn" style="flex:1; border-bottom:none; border-radius:0; padding:12px 10px;" onclick="switchSettingsTab(event, 'settings-subtab-users')">👥 حسابات وصلاحيات الزبائن</button>
+            </div>
+
+            <div class="modal-body" style="padding-top:15px; max-height:60vh; overflow-y:auto;">
+                <!-- التبويب الفرعي الأول: إعدادات الهوية والتقارير -->
+                <div id="settings-subtab-identity" class="settings-subtab-content">
+                    <form id="system-config-form" onsubmit="event.preventDefault(); submitSystemConfigForm();">
+                        <div class="form-group">
+                            <label class="form-label">إسم المركز / المستشفى</label>
+                            <input class="form-control" type="text" id="config-center-name" required placeholder="مثال: مستشفى القلب التخصصي">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">عنوان التقرير الفرعي</label>
+                            <input class="form-control" type="text" id="config-report-subtitle" required placeholder="مثال: إدارة مخازن ومستودعات المستهلكات الطبية">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">تصميم ولون تقرير الـ PDF المطبوع</label>
+                            <select class="form-control" id="config-report-style">
+                                <option value="blue">🔵 أزرق طبي كلاسيكي (Classic Blue)</option>
+                                <option value="slate">⚫ رمادي غامق أنيق (Elegant Slate)</option>
+                                <option value="teal">🟢 أخضر استشفائي (Teal Healing)</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block" style="margin-top:20px;">💾 حفظ وتطبيق الإعدادات</button>
+                    </form>
+                </div>
+
+                <!-- التبويب الفرعي لتخصيص القائمة الجانبية -->
+                <div id="settings-subtab-sidebar" class="settings-subtab-content hidden">
+                    <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:15px;">
+                        يمكنك التحكم بترتيب أقسام القائمة الجانبية (Sidebar) واختيار القوائم التي تبدأ مفتوحة تلقائياً عند تحميل الصفحة.
+                    </p>
+                    
+                    <div style="background:var(--bg-tertiary); padding:15px; border-radius:var(--radius-md); border:1px solid var(--border-color); margin-bottom:20px;">
+                        <span style="font-weight:700; font-size:0.9rem; display:block; margin-bottom:12px; color:var(--accent);">↕️ ترتيب أقسام القائمة الجانبية:</span>
+                        
+                        <div id="sidebar-order-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;">
+                            <!-- يتم تعبئة البنود ديناميكياً بواسطة JS -->
+                        </div>
+                    </div>
+
+                    <div style="background:var(--bg-tertiary); padding:15px; border-radius:var(--radius-md); border:1px solid var(--border-color); margin-bottom:20px;">
+                        <span style="font-weight:700; font-size:0.9rem; display:block; margin-bottom:10px; color:var(--accent);">📂 القوائم الفرعية المفتوحة افتراضياً:</span>
+                        <div class="form-group" style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                            <input type="checkbox" id="config-open-stores-submenu" style="width:18px; height:18px; cursor:pointer;">
+                            <label class="form-label" for="config-open-stores-submenu" style="margin-bottom:0; cursor:pointer;">فتح قائمة "المخازن والمستودعات" تلقائياً عند التشغيل</label>
+                        </div>
+                        <div class="form-group" style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                            <input type="checkbox" id="config-open-invoices-submenu" style="width:18px; height:18px; cursor:pointer;">
+                            <label class="form-label" for="config-open-invoices-submenu" style="margin-bottom:0; cursor:pointer;">فتح قائمة "الفواتير وقوائم التوريد" تلقائياً عند التشغيل</label>
+                        </div>
+                        <div class="form-group" style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                            <input type="checkbox" id="config-open-orders-submenu" style="width:18px; height:18px; cursor:pointer;">
+                            <label class="form-label" for="config-open-orders-submenu" style="margin-bottom:0; cursor:pointer;">فتح قائمة "طلبيات الزبائن" تلقائياً عند التشغيل</label>
+                        </div>
+                        <div class="form-group" style="display:flex; align-items:center; gap:10px; margin-bottom:0;">
+                            <input type="checkbox" id="config-open-reports-submenu" style="width:18px; height:18px; cursor:pointer;">
+                            <label class="form-label" for="config-open-reports-submenu" style="margin-bottom:0; cursor:pointer;">فتح قائمة "التقارير والإحصائيات" تلقائياً عند التشغيل</label>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary btn-block" onclick="saveSidebarSettings()">💾 حفظ وتطبيق ترتيب وتكوين القائمة الجانبية</button>
+                </div>
+
+                <!-- التبويب الفرعي الثاني: إدارة حسابات وصلاحيات الزبائن -->
+                <div id="settings-subtab-users" class="settings-subtab-content hidden">
+                    <!-- نموذج إضافة زبون جديد -->
+                    <div style="background:var(--bg-tertiary); padding:15px; border-radius:var(--radius-md); border:1px solid var(--border-color); margin-bottom:20px;">
+                        <span style="font-weight:700; font-size:0.9rem; display:block; margin-bottom:10px; color:var(--accent);">➕ إضافة حساب زبون جديد:</span>
+                        <div class="form-grid">
+                            <div class="form-group" style="margin-bottom:10px;">
+                                <label class="form-label">اسم المستخدم (English/Login)</label>
+                                <input class="form-control" type="text" id="new-user-username" placeholder="مثال: custom_stent">
+                            </div>
+                            <div class="form-group" style="margin-bottom:10px;">
+                                <label class="form-label">اسم العرض (العربية)</label>
+                                <input class="form-control" type="text" id="new-user-name" placeholder="مثال: شعبة العمليات الخاصة">
+                            </div>
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group" style="margin-bottom:10px;">
+                                <label class="form-label">كلمة المرور</label>
+                                <input class="form-control" type="password" id="new-user-password" placeholder="كلمة المرور">
+                            </div>
+                            <div class="form-group" style="margin-bottom:10px;">
+                                <label class="form-label">مستوى الصلاحية</label>
+                                <select class="form-control" id="new-user-permission">
+                                    <option value="full">صلاحية كاملة (عرض وطلب مواد)</option>
+                                    <option value="view_only">صلاحية مقلصة (عرض الرصيد فقط)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary btn-block" style="margin-top:10px;" onclick="submitAddUserForm()">إضافة الحساب للنظام</button>
+                    </div>
+
+                    <!-- جدول عرض وإدارة الحسابات الحالية -->
+                    <span class="form-label" style="margin-bottom:8px; display:block;">👥 حسابات الزبائن والمسؤولين النشطة حالياً:</span>
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>اسم الزبون</th>
+                                    <th>الصلاحية الحالية</th>
+                                    <th style="text-align:left;">إجراءات التحكم</th>
+                                </tr>
+                            </thead>
+                            <tbody id="settings-users-tbody">
+                                <!-- تعبأ ديناميكياً -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer" style="background:rgba(0,0,0,0.15);">
+                <button class="btn btn-secondary" onclick="closeModal('system-settings-modal')">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 9. مودال خيارات طباعة تقرير الجرد PDF (الأدمن) -->
+    <div id="print-report-modal" class="modal">
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h3 class="modal-title">🖨️ خيارات طباعة تقرير الجرد PDF</h3>
+                <button class="btn-icon" onclick="closeModal('print-report-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 15px; font-size:0.85rem; color:var(--text-secondary);">
+                    قم بتخصيص خيارات تصفية التقرير قبل توليد ملف الـ PDF للطباعة.
+                </p>
+                
+                <div class="form-group">
+                    <label class="form-label">نوع التقرير</label>
+                    <select id="print-report-type" class="form-control" onchange="togglePrintReportTypeFields()">
+                        <option value="inventory">📦 جرد وأرصدة المواد الطبية</option>
+                        <option value="forecast">🤖 تخمين صرفيات وهدر صلاحيات المواد</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-top: 10px;">
+                    <label class="form-label">صيغة التصدير</label>
+                    <select id="print-export-format" class="form-control">
+                        <option value="pdf">📄 تصدير وتحميل ملف PDF</option>
+                        <option value="excel">📊 تصدير وتنزيل ملف Excel (إكسل)</option>
+                    </select>
+                </div>
+
+                <div id="print-inventory-filters-group">
+                    <div class="form-group">
+                        <label class="form-label">المخزن المستهدف بالتقرير</label>
+                        <select id="print-store-filter" class="form-control">
+                            <option value="all">📦 الكل (المجموع الكلي المدمج)</option>
+                            <option value="store1">🏦 مخزن رقم 1 (الرئيسي)</option>
+                            <option value="store2">🏬 مخزن رقم 2 (الفرعي)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">مصدر المواد (طريقة التوريد)</label>
+                        <select id="print-source-filter" class="form-control">
+                            <option value="الكل">📁 الكل (بدون تصفية المصدر)</option>
+                            <option value="مشتريات">📦 مشتريات</option>
+                            <option value="عامة">🏢 عامة</option>
+                            <option value="فاتورة">📄 فاتورة</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 15px;">
+                    <label class="form-label">تصفية حسب تاريخ صلاحية المواد</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <span style="font-size:0.75rem; color:var(--text-secondary); display:block; margin-bottom:4px;">من تاريخ صلاحية</span>
+                            <input type="date" id="print-date-from" class="form-control">
+                        </div>
+                        <div>
+                            <span style="font-size:0.75rem; color:var(--text-secondary); display:block; margin-bottom:4px;">إلى تاريخ صلاحية</span>
+                            <input type="date" id="print-date-to" class="form-control">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('print-report-modal')">إلغاء</button>
+                <button class="btn btn-primary" onclick="submitPrintReportForm()">📄 توليد وطباعة التقرير</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 10. مودال تعديل بيانات مادة (الأدمن) -->
+    <div id="edit-material-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">📝 تعديل بيانات مادة طبية</h3>
+                <button class="btn-icon" onclick="closeModal('edit-material-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="edit-material-form">
+                    <input type="hidden" id="edit-id">
+                    <div class="form-group">
+                        <label class="form-label">اسم المادة الطبية</label>
+                        <input class="form-control" type="text" id="edit-name" required>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">رقم التشغيلة (الباج)</label>
+                            <input class="form-control" type="text" id="edit-batch" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">تاريخ الصلاحية (الاكسباير)</label>
+                            <input class="form-control" type="date" id="edit-expiry" required>
+                        </div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">الكمية الحالية (العدد)</label>
+                            <input class="form-control" type="number" id="edit-qty" min="0" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">الشركة المصنعة</label>
+                            <input class="form-control" type="text" id="edit-company" required>
+                        </div>
+                    </div>
+                    <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
+                        <div class="form-group">
+                            <label class="form-label">تخزين في</label>
+                            <select class="form-control" id="edit-store-select">
+                                <option value="store1">مخزن رقم 1 (الرئيسي)</option>
+                                <option value="store2">مخزن رقم 2 (الفرعي)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">تصنيف المادة</label>
+                            <select class="form-control" id="edit-category-select" required>
+                                <!-- يعبأ ديناميكياً -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">مصدر المادة (الجهة)</label>
+                            <select class="form-control" id="edit-source-select" required>
+                                <option value="عامة">عامة</option>
+                                <option value="مشتريات">مشتريات</option>
+                                <option value="فاتورة">فاتورة</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">سعر المفرد للمادة (دينار عراقي د.ع)</label>
+                            <input class="form-control" type="number" id="edit-price" min="0" value="0" required>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('edit-material-modal')">إلغاء</button>
+                <button class="btn btn-primary" onclick="submitEditMaterialForm()">تأكيد تعديل البيانات</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 12. مودال إضافة مادة جديدة سريعة للنظام -->
+    <div id="quick-add-material-modal" class="modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h3 class="modal-title">➕ إضافة مادة جديدة للنظام</h3>
+                <button class="btn-icon" onclick="closeModal('quick-add-material-modal')">✕</button>
+            </div>
+            <div class="modal-body" style="direction: rtl;">
+                <form id="quick-add-material-form" onsubmit="event.preventDefault(); submitQuickAddMaterialForm();">
+                    <div class="form-group">
+                        <label class="form-label">اسم المادة الطبية</label>
+                        <input type="text" id="quick-add-name" class="form-control" required placeholder="مثال: قسطرة توسيعية 3.0" style="width: 100%;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">الشركة المصنعة</label>
+                        <input type="text" id="quick-add-company" class="form-control" required placeholder="مثال: Medtronic" style="width: 100%;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">التصنيف</label>
+                        <select id="quick-add-category" class="form-control" required style="width: 100%; cursor: pointer;">
+                            <!-- يعبأ ديناميكياً بالتصنيفات المتاحة -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">سعر المفرد الافتراضي (د.ع)</label>
+                        <input type="number" id="quick-add-price" class="form-control" required min="0" value="0" style="width: 100%;">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block" style="margin-top: 15px; width: 100%;">💾 حفظ وإضافة للسطر</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 11. مودال عرض تفاصيل قائمة الإدخال المحفوظة (Receipt Details) -->
+    <div id="receipt-details-modal" class="modal">
+        <div class="modal-content" style="max-width: 900px; width: 95%;">
+            <div class="modal-header no-print">
+                <h3 class="modal-title">🔍 تفاصيل فاتورة إدخال وتوريد المواد</h3>
+                <button class="btn-icon" onclick="closeModal('receipt-details-modal')">✕</button>
+            </div>
+            
+            <div class="modal-body" style="padding: 20px; overflow-y: auto; max-height: 70vh;">
+                <!-- ورقة الفاتورة المطبوعة (تصميم دفترة المميز) -->
+                <div id="daftra-invoice-sheet" class="daftra-invoice-container" style="background: #ffffff; color: #1e293b; padding: 30px; border-radius: 8px; border: 1px solid #e2e8f0; font-family: 'Inter', 'Outfit', sans-serif; direction: rtl; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                    
+                    <!-- ترويسة الفاتورة (رأس الصفحة) -->
+                    <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #3b82f6; padding-bottom: 20px; margin-bottom: 25px; flex-wrap: wrap; gap: 15px;">
+                        <!-- الجانب الأيمن: معلومات المستشفى/الجهة -->
+                        <div>
+                            <h2 style="margin: 0 0 5px 0; font-size: 1.25rem; font-weight: 800; color: #1e3a8a; text-align: right;">مستشفى آزادي التعليمي</h2>
+                            <p style="margin: 0; font-size: 0.85rem; color: #64748b; font-weight: 600; text-align: right;">شعبة جرد وإدارة المخازن الطبية</p>
+                            <p style="margin: 3px 0 0 0; font-size: 0.8rem; color: #94a3b8; text-align: right;">دائرة صحة كركوك</p>
+                        </div>
+                        
+                        <!-- الجانب الأيسر: تفاصيل مستند التوريد كفاتورة شراء -->
+                        <div style="text-align: left; direction: ltr;">
+                            <h1 style="margin: 0 0 10px 0; font-size: 1.5rem; font-weight: 900; color: #3b82f6; letter-spacing: 0.5px; text-transform: uppercase;">فاتورة توريد مواد</h1>
+                            <div style="font-size: 0.85rem; color: #475569; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; direction: rtl;">
+                                <div>رقم القائمة: <strong id="detail-receipt-list-id" style="color: #1e293b; font-family: monospace;"></strong></div>
+                                <div>رقم الوصل: <strong id="detail-receipt-number" style="color: #10b981;"></strong></div>
+                                <div>تاريخ التوريد: <strong id="detail-receipt-date" style="color: #1e293b;"></strong></div>
+                                <div class="no-print" style="margin-top: 5px;">نوع الحركة: <span style="background: #eff6ff; color: #2563eb; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; border: 1px solid #bfdbfe;">توريد مخزني (وصل)</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- معلومات المورد والموظف المسؤول -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 6px; margin-bottom: 25px; font-size: 0.85rem; text-align: right;">
+                        <div>
+                            <span style="color: #64748b; display: block; margin-bottom: 4px; font-weight: 600;">اسم المورد (Supplier):</span>
+                            <strong id="detail-receipt-supplier" style="color: #1e293b;">مورد خارجي</strong>
+                        </div>
+                        <div>
+                            <span style="color: #64748b; display: block; margin-bottom: 4px; font-weight: 600;">حالة الفاتورة (Status):</span>
+                            <strong id="detail-receipt-status" style="color: #2563eb;">معتمد</strong>
+                        </div>
+                        <div>
+                            <span style="color: #64748b; display: block; margin-bottom: 4px; font-weight: 600;">المستلم المسؤول:</span>
+                            <strong>أمين المخزن (الآدمن)</strong>
+                        </div>
+                        <div>
+                            <span style="color: #64748b; display: block; margin-bottom: 4px; font-weight: 600;">طريقة القيد والتوريد:</span>
+                            <strong>قيد وتوريد دفعي (Batch Entry)</strong>
+                        </div>
+                    </div>
+                    
+                    <!-- جدول المواد الموردة (تصميم دفترة المنظم) -->
+                    <div class="table-responsive" style="margin-bottom: 25px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;">
+                        <table class="table" style="width: 100%; border-collapse: collapse; margin: 0; font-size: 0.85rem; color: #334155; min-width: 750px;">
+                            <thead>
+                                <tr style="background: #1e293b; color: #ffffff;">
+                                    <th style="padding: 10px; border: 1px solid #334155; text-align: center; width: 5%;">#</th>
+                                    <th style="padding: 10px; border: 1px solid #334155; text-align: right; width: 30%;">اسم المادة الموردة</th>
+                                    <th style="padding: 10px; border: 1px solid #334155; text-align: right; width: 12%;">الشركة المصنعة</th>
+                                    <th style="padding: 10px; border: 1px solid #334155; text-align: center; width: 12%;">رقم التشغيلة (الباج)</th>
+                                    <th style="padding: 10px; border: 1px solid #334155; text-align: center; width: 12%;">تاريخ الصلاحية</th>
+                                    <th style="padding: 10px; border: 1px solid #334155; text-align: right; width: 10%;">المخزن</th>
+                                    <th style="padding: 10px; border: 1px solid #334155; text-align: right; width: 10%;">سعر المفرد</th>
+                                    <th style="padding: 10px; border: 1px solid #334155; text-align: center; width: 8%;">الكمية</th>
+                                    <th style="padding: 10px; border: 1px solid #334155; text-align: left; padding-left: 15px; width: 11%;">إجمالي السطر</th>
+                                </tr>
+                            </thead>
+                            <tbody id="receipt-details-tbody" style="background: #ffffff;">
+                                <!-- تعبأ ديناميكياً بواسطة JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- أسفل الفاتورة (إجماليات وتوقيعات) -->
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 30px; margin-top: 20px; direction: rtl;">
+                        <!-- التواقيع والاعتماد للتدقيق -->
+                        <div style="display: flex; gap: 40px; font-size: 0.8rem; color: #475569; text-align: right;">
+                            <div style="text-align: center; min-width: 140px;">
+                                <p style="margin: 0 0 45px 0; font-weight: 700;">توقيع أمين المخزن المستلم</p>
+                                <div style="border-top: 1px dashed #cbd5e1; width: 100%;"></div>
+                            </div>
+                            <div style="text-align: center; min-width: 140px;">
+                                <p style="margin: 0 0 45px 0; font-weight: 700;">توقيع واعتماد الشعبة</p>
+                                <div style="border-top: 1px dashed #cbd5e1; width: 100%;"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- الحسابات الختامية للفاتورة -->
+                        <div style="width: 280px; font-size: 0.85rem; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; background: #fafafa; text-align: right; direction: rtl;">
+                            <div style="display: flex; justify-content: space-between; padding: 10px 15px; border-bottom: 1px solid #e2e8f0;">
+                                <span style="color: #64748b;">إجمالي عدد الأصناف:</span>
+                                <strong id="detail-receipt-total-items" style="color: #1e293b;">0 أصناف</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 10px 15px; border-bottom: 1px solid #e2e8f0;">
+                                <span style="color: #64748b;">إجمالي كمية القطع:</span>
+                                <strong id="detail-receipt-total-qty" style="color: #2563eb;">0 قطعة</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 12px 15px; background: #eff6ff; font-size: 0.95rem; font-weight: 800;">
+                                <span style="color: #1e3a8a;">القيمة المالية الكلية:</span>
+                                <span style="color: #10b981;"><span id="detail-receipt-total-value">0</span> د.ع</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="modal-footer no-print">
+                <button class="btn btn-secondary" onclick="closeModal('receipt-details-modal')">إغلاق النافذة</button>
+                <button class="btn btn-primary" onclick="generateReceiptInvoicePDF(document.getElementById('detail-receipt-list-id').innerText.trim())" style="background-color: #2563eb; border-color: #2563eb; display: flex; align-items: center; gap: 6px; font-weight: bold;">
+                    📄 تصدير وتحميل كملف PDF
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- حاوية الإشعارات العائمة Toast -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Firebase SDK Compat (Live Cloud Database) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+    <script src="stents_data.js?v=1.0.0"></script>
+    <script src="app.js?v=2.2.0"></script>
+</body>
+</html>

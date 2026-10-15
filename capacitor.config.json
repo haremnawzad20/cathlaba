@@ -1,0 +1,8 @@
+{
+  "appId": "com.hospital.catheterinventory",
+  "appName": "Catheter Inventory",
+  "webDir": ".",
+  "server": {
+    "androidScheme": "https"
+  }
+}
