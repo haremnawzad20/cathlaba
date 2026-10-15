@@ -3852,7 +3852,7 @@ window.getUniqueMaterials = getUniqueMaterials;
 
 let activeRowIdForQuickAdd = null;
 
-function openQuickAddMaterial(rowId, typedName = '') {
+function openQuickAddMaterial(rowId = null, typedName = '') {
     activeRowIdForQuickAdd = rowId;
     
     const catSelect = document.getElementById('quick-add-category');
@@ -3869,11 +3869,16 @@ function openQuickAddMaterial(rowId, typedName = '') {
     
     const nameInput = document.getElementById('quick-add-name');
     if (nameInput) {
-        nameInput.value = typedName;
+        nameInput.value = typedName || '';
     }
     
     document.getElementById('quick-add-company').value = '';
     document.getElementById('quick-add-price').value = '0';
+    
+    const submitBtn = document.querySelector('#quick-add-material-form button[type="submit"]');
+    if (submitBtn) {
+        submitBtn.innerText = rowId ? '💾 حفظ وإضافة للسطر' : '💾 حفظ المادة الجديدة بالنظام';
+    }
     
     openModal('quick-add-material-modal');
 }
@@ -3911,10 +3916,15 @@ function submitQuickAddMaterialForm() {
             const m = { name, company, category, price };
             selectSuggestion(row, m);
         }
+        closeModal('quick-add-material-modal');
+        showToast(`تمت إضافة المادة "${name}" بنجاح وتعبئتها في السطر!`, 'success');
+    } else {
+        closeModal('quick-add-material-modal');
+        showToast(`تمت إضافة المادة "${name}" بنجاح إلى قائمة المواد بالنظام!`, 'success');
+        if (state.currentUser && state.currentUser.role === 'admin') {
+            renderAdminDashboard();
+        }
     }
-    
-    closeModal('quick-add-material-modal');
-    showToast(`تمت إضافة المادة "${name}" بنجاح وتعبئتها في السطر!`, 'success');
 }
 window.submitQuickAddMaterialForm = submitQuickAddMaterialForm;
 
