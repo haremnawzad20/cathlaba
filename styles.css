@@ -1517,12 +1517,44 @@ body {
     direction: rtl;
 }
 .suggestion-item {
-    padding: 8px 12px;
+    padding: 7px 12px;
     cursor: pointer;
     font-size: 0.8rem;
     color: var(--text-primary);
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     transition: background-color 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.suggestion-item-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.btn-suggestion-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    user-select: none;
+}
+.btn-suggestion-edit:hover {
+    background: #0284c7;
+    color: #ffffff;
+    border-color: #0284c7;
+    transform: scale(1.05);
 }
 .suggestion-item:hover, .suggestion-item.highlighted {
     background-color: var(--bg-tertiary);
