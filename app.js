@@ -3918,6 +3918,113 @@ function submitQuickAddMaterialForm() {
 }
 window.submitQuickAddMaterialForm = submitQuickAddMaterialForm;
 
+let activeRowIdForQuickEdit = null;
+
+function openQuickEditMaterial(material, rowId = null) {
+    activeRowIdForQuickEdit = rowId;
+    
+    const origNameInput = document.getElementById('quick-edit-original-name');
+    const nameInput = document.getElementById('quick-edit-name');
+    const companyInput = document.getElementById('quick-edit-company');
+    const catSelect = document.getElementById('quick-edit-category');
+    const priceInput = document.getElementById('quick-edit-price');
+    
+    if (origNameInput) origNameInput.value = material.name;
+    if (nameInput) nameInput.value = material.name;
+    if (companyInput) companyInput.value = material.company || '';
+    if (priceInput) priceInput.value = material.price || 0;
+    
+    if (catSelect) {
+        catSelect.innerHTML = '';
+        state.categories.forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat;
+            opt.innerText = cat;
+            if (cat === material.category) opt.selected = true;
+            catSelect.appendChild(opt);
+        });
+    }
+    
+    openModal('quick-edit-material-modal');
+}
+window.openQuickEditMaterial = openQuickEditMaterial;
+
+async function submitQuickEditMaterialForm() {
+    const originalName = document.getElementById('quick-edit-original-name').value.trim();
+    const newName = document.getElementById('quick-edit-name').value.trim();
+    const newCompany = document.getElementById('quick-edit-company').value.trim();
+    const newCategory = document.getElementById('quick-edit-category').value;
+    const newPrice = parseFloat(document.getElementById('quick-edit-price').value) || 0;
+    
+    if (!newName) {
+        showToast('الرجاء إدخال اسم المادة الطبية', 'danger');
+        return;
+    }
+    
+    // 1. تحديث كافة السجلات المطابقة في state.materials
+    let matchCount = 0;
+    state.materials.forEach(mat => {
+        if (mat.name && mat.name.trim().toLowerCase() === originalName.toLowerCase()) {
+            mat.name = newName;
+            mat.company = newCompany;
+            mat.category = newCategory;
+            mat.price = newPrice;
+            matchCount++;
+        }
+    });
+    
+    // إذا لم يكن لها سجل مطابق سابقاً في المخزن ننشئ لها قالباً
+    if (matchCount === 0) {
+        state.materials.push({
+            id: 'mat-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+            name: newName,
+            company: newCompany,
+            category: newCategory,
+            price: newPrice,
+            quantity: 0,
+            batchNumber: 'TEMPLATE',
+            expiryDate: new Date().toISOString().split('T')[0],
+            store: 'store1',
+            sourceType: 'عامة'
+        });
+    }
+    
+    // 2. الحفظ والمزامنة السحابية مع Firebase والتخزين المحلي
+    state.save();
+    
+    // 3. إذا كان هناك سطر نشط في الجدول، نحدث قيمه فوراً
+    if (activeRowIdForQuickEdit) {
+        const row = document.getElementById(activeRowIdForQuickEdit);
+        if (row) {
+            const nameInput = row.querySelector('.row-name');
+            const companyInput = row.querySelector('.row-company');
+            const categorySelect = row.querySelector('.row-category');
+            const priceInput = row.querySelector('.row-price');
+            
+            if (nameInput) nameInput.value = newName;
+            if (companyInput) companyInput.value = newCompany;
+            if (categorySelect) categorySelect.value = newCategory;
+            if (priceInput) priceInput.value = newPrice;
+            
+            if (typeof calculateInvoiceGrandTotal === 'function') {
+                calculateInvoiceGrandTotal();
+            }
+            
+            // إعادة تشغيل البحث في القائمة لإظهار التعديل الجديد
+            if (nameInput) {
+                nameInput.dispatchEvent(new Event('input'));
+            }
+        }
+    }
+    
+    closeModal('quick-edit-material-modal');
+    showToast(`تم تعديل وتحديث بيانات المادة "${newName}" بنجاح!`, 'success');
+    
+    if (typeof renderInventory === 'function') renderInventory();
+    if (typeof renderAdminDashboard === 'function') renderAdminDashboard();
+}
+window.submitQuickEditMaterialForm = submitQuickEditMaterialForm;
+
 function selectSuggestion(rowElement, material) {
     const nameInput = rowElement.querySelector('.row-name');
     const companyInput = rowElement.querySelector('.row-company');
@@ -4027,8 +4134,29 @@ function addNewInvoiceRow(data = null) {
             filtered.forEach((m) => {
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'suggestion-item';
-                itemDiv.innerText = m.name;
+                
+                const textSpan = document.createElement('span');
+                textSpan.className = 'suggestion-item-text';
+                textSpan.innerText = m.name;
+                
+                const editBtn = document.createElement('button');
+                editBtn.type = 'button';
+                editBtn.className = 'btn-suggestion-edit';
+                editBtn.innerHTML = '✏️ تعديل';
+                editBtn.title = 'تعديل بيانات هذه المادة (الاسم، التصنيف، الشركة، السعر)';
+                
+                editBtn.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropdown.classList.add('hidden');
+                    openQuickEditMaterial(m, tr.id);
+                });
+                
+                itemDiv.appendChild(textSpan);
+                itemDiv.appendChild(editBtn);
+                
                 itemDiv.addEventListener('mousedown', (e) => {
+                    if (e.target.closest('.btn-suggestion-edit')) return;
                     e.preventDefault(); // يمنع فقدان التركيز الفوري
                     selectSuggestion(tr, m);
                     dropdown.classList.add('hidden');
