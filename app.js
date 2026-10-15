@@ -118,8 +118,14 @@ class AppState {
         this.categories = JSON.parse(localStorage.getItem('cath_categories')) || DEFAULT_CATEGORIES;
         this.users = JSON.parse(localStorage.getItem('cath_users')) || DEFAULT_USERS;
         this.systemConfig = JSON.parse(localStorage.getItem('cath_config')) || DEFAULT_CONFIG;
-        this.currentUser = JSON.parse(sessionStorage.getItem('cath_user')) || null;
-        this.theme = localStorage.getItem('cath_theme') || 'dark';
+        // استعادة المظهر الداكن الأصلي المطلوب
+        if (!localStorage.getItem('cath_theme_restored_dark_v2')) {
+            this.theme = 'dark';
+            localStorage.setItem('cath_theme', 'dark');
+            localStorage.setItem('cath_theme_restored_dark_v2', 'true');
+        } else {
+            this.theme = localStorage.getItem('cath_theme') || 'dark';
+        }
         this.customerCart = JSON.parse(localStorage.getItem('cath_cart')) || [];
         
         // الكيانات الجديدة الخاصة بفواتير ومواد التوريد
