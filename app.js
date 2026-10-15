@@ -4273,12 +4273,6 @@ async function submitFinalizeReceiptDraft(isDraft = true) {
             // الخطوة الأولى: إعداد وحفظ السجل بـ Invoices
             const existingInvoiceIdx = state.Invoices.findIndex(i => i.id === listId);
             
-            // تحقق من عدم التعديل على فاتورة مكتملة
-            if (existingInvoiceIdx !== -1 && state.Invoices[existingInvoiceIdx].status === 'completed') {
-                showToast('لا يمكن تعديل هذه الفاتورة لأنها معتمدة ومرحلة بالفعل', 'danger');
-                return;
-            }
-            
             const invoiceData = {
                 id: listId,
                 invoice_number: receiptNum,
@@ -4295,6 +4289,24 @@ async function submitFinalizeReceiptDraft(isDraft = true) {
             const backupDetails = [...state.Invoice_Items];
             const backupMaterials = JSON.parse(JSON.stringify(state.materials));
             
+            // إذا كانت الفاتورة معتمدة سابقاً وتم تحويلها لمسودة، نخصم كمياتها القديمة من رصيد المخزن
+            if (existingInvoiceIdx !== -1 && state.Invoices[existingInvoiceIdx].status === 'completed') {
+                const oldInvoice = state.Invoices[existingInvoiceIdx];
+                if (oldInvoice.items && oldInvoice.items.length > 0) {
+                    oldInvoice.items.forEach(oldItem => {
+                        let prod = state.materials.find(m => 
+                            m.name.toLowerCase() === oldItem.name.toLowerCase() && 
+                            m.batchNumber === oldItem.batchNumber && 
+                            m.store === oldItem.store
+                        );
+                        if (prod) {
+                            prod.quantity = Math.max(0, (parseInt(prod.quantity) || 0) - oldItem.quantity);
+                        }
+                    });
+                }
+                state.transactions = state.transactions.filter(t => t.listId !== listId && t.receiptNumber !== oldInvoice.invoice_number);
+            }
+
             if (existingInvoiceIdx !== -1) {
                 state.Invoices[existingInvoiceIdx] = invoiceData;
             } else {
@@ -4355,20 +4367,39 @@ async function submitFinalizeReceiptDraft(isDraft = true) {
             switchTab('tab-saved-receipts');
         }
     } else {
-        if (confirm(`هل أنت متأكد من اعتماد وترحيل هذه القائمة نهائياً؟ (سيتم زيادة أرصدة المواد بالمخازن وتسجيل حركة دخول مخزني ولا يمكن تعديلها لاحقاً)`)) {
-            const existingInvoiceIdx = state.Invoices.findIndex(i => i.id === listId);
-            
-            if (existingInvoiceIdx !== -1 && state.Invoices[existingInvoiceIdx].status === 'completed') {
-                showToast('هذه القائمة معتمدة ومرحلة بالفعل', 'danger');
-                return;
+        const existingInvoiceIdx = state.Invoices.findIndex(i => i.id === listId);
+        const isEditingCompleted = (existingInvoiceIdx !== -1 && state.Invoices[existingInvoiceIdx].status === 'completed');
+
+        const confirmMsg = isEditingCompleted
+            ? `هل أنت متأكد من حفظ وتحديث هذه القائمة المعتمدة رقم "${receiptNum}"؟\nسيتم تحديث كميات المواد بالمخازن تلقائياً بناءً على البيانات المعدلة.`
+            : `هل أنت متأكد من اعتماد وترحيل هذه القائمة رقم "${receiptNum}" نهائياً للمخزن؟`;
+
+        if (confirm(confirmMsg)) {
+            // إذا كانت الفاتورة معتمدة سابقاً، نقوم بخصم كمياتها القديمة أولاً لكي لا تتكرر الزيادة
+            if (isEditingCompleted) {
+                const oldInvoice = state.Invoices[existingInvoiceIdx];
+                if (oldInvoice.items && oldInvoice.items.length > 0) {
+                    oldInvoice.items.forEach(oldItem => {
+                        let prod = state.materials.find(m => 
+                            m.name.toLowerCase() === oldItem.name.toLowerCase() && 
+                            m.batchNumber === oldItem.batchNumber && 
+                            m.store === oldItem.store
+                        );
+                        if (prod) {
+                            prod.quantity = Math.max(0, (parseInt(prod.quantity) || 0) - oldItem.quantity);
+                        }
+                    });
+                }
+                state.transactions = state.transactions.filter(t => t.listId !== listId && t.receiptNumber !== oldInvoice.invoice_number);
             }
             
             const invoiceData = {
                 id: listId,
                 invoice_number: receiptNum,
                 supplier_name: supplier,
-                date: new Date().toISOString().split('T')[0],
-                created_at: new Date().toISOString().split('T')[0],
+                date: (existingInvoiceIdx !== -1 && state.Invoices[existingInvoiceIdx].date) ? state.Invoices[existingInvoiceIdx].date : new Date().toISOString().split('T')[0],
+                created_at: (existingInvoiceIdx !== -1 && state.Invoices[existingInvoiceIdx].created_at) ? state.Invoices[existingInvoiceIdx].created_at : new Date().toISOString().split('T')[0],
+                updated_at: new Date().toISOString().split('T')[0],
                 total_amount: totalVal,
                 status: 'completed',
                 items: itemsToValidate
@@ -4442,7 +4473,7 @@ async function submitFinalizeReceiptDraft(isDraft = true) {
             state.save(); // يرفع بالخلفية دون حجب الواجهة
             
             const redirectBtn = `<button class="btn btn-secondary" style="margin-right:12px; padding:3px 8px; font-size:0.75rem; background-color:#10b981; color:white; border:none; cursor:pointer; border-radius:4px; font-weight:bold;" onclick="switchTab('tab-saved-receipts')">الانتقال لإدارة الفواتير ➔</button>`;
-            showToast(`تم حفظ الفاتورة رقم ${receiptNum} بنجاح! ${redirectBtn}`, 'success');
+            showToast(`تم ${isEditingCompleted ? 'تعديل وتحديث' : 'اعتماد وتوريد'} الفاتورة رقم ${receiptNum} بنجاح! ${redirectBtn}`, 'success');
             
             initNewReceiptDraft();
             renderAdminDashboard();
@@ -4454,12 +4485,17 @@ window.submitFinalizeReceiptDraft = submitFinalizeReceiptDraft;
 
 function loadDraftForEditing(listId) {
     const invoice = state.Invoices.find(i => i.id === listId);
-    if (!invoice) return;
-    
-    if (invoice.status === 'completed') {
-        showToast('لا يمكن تعديل الفواتير المعتمدة والمكتملة', 'warning');
+    if (!invoice) {
+        showToast('لم يتم العثور على القائمة المطلوبة', 'danger');
         return;
     }
+    
+    // إغلاق نافذة التفاصيل إذا كانت مفتوحة
+    if (typeof closeModal === 'function') {
+        closeModal('receipt-details-modal');
+    }
+    
+    const isCompleted = invoice.status === 'completed';
     
     const listIdInput = document.getElementById('add-tab-list-id');
     if (listIdInput) listIdInput.value = invoice.id;
@@ -4511,9 +4547,14 @@ function loadDraftForEditing(listId) {
     }
     
     switchTab('tab-add-material');
-    showToast('تم تحميل بيانات المسودة للمحرر', 'info');
+    if (isCompleted) {
+        showToast(`تم فتح الفاتورة المعتمدة #${invoice.invoice_number} للتعديل. عند حفظها سيتم تحديث الكميات في المخازن تلقائياً.`, 'info');
+    } else {
+        showToast('تم تحميل بيانات المسودة للمحرر', 'info');
+    }
 }
 window.loadDraftForEditing = loadDraftForEditing;
+window.loadInvoiceForEditing = loadDraftForEditing;
 
 async function confirmDraftReceipt(listId) {
     const invoice = state.Invoices.find(i => i.id === listId);
@@ -4606,27 +4647,67 @@ window.confirmDraftReceipt = confirmDraftReceipt;
 
 async function deleteDraftReceipt(listId) {
     const idx = state.Invoices.findIndex(i => i.id === listId);
-    if (idx === -1) return;
-    
-    const invoice = state.Invoices[idx];
-    if (invoice.status === 'completed') {
-        showToast('لا يمكن حذف الفواتير والمستندات المعتمدة والمكتملة نهائياً', 'danger');
+    if (idx === -1) {
+        showToast('لم يتم العثور على القائمة لحذفها', 'warning');
         return;
     }
     
-    if (confirm(`هل أنت متأكد من حذف قائمة التوريد المسودة رقم "${invoice.invoice_number}" نهائياً؟`)) {
+    const invoice = state.Invoices[idx];
+    const isCompleted = invoice.status === 'completed';
+    
+    const confirmMessage = isCompleted
+        ? `هل أنت متأكد من حذف قائمة التوريد المعتمدة رقم "${invoice.invoice_number}" نهائياً؟\n\nتنبيه: سيتم خصم وإلغاء كميات هذه القائمة من رصيد المخزن تلقائياً لإبقاء الجرد متطابقاً.`
+        : `هل أنت متأكد من حذف قائمة التوريد المسودة رقم "${invoice.invoice_number}" نهائياً؟`;
+    
+    if (confirm(confirmMessage)) {
+        // إذا كانت معتمدة، نخصم كمياتها من المخازن ونلغي حركاتها
+        if (isCompleted) {
+            if (invoice.items && invoice.items.length > 0) {
+                invoice.items.forEach(oldItem => {
+                    let prod = state.materials.find(m => 
+                        m.name.toLowerCase() === oldItem.name.toLowerCase() && 
+                        m.batchNumber === oldItem.batchNumber && 
+                        m.store === oldItem.store
+                    );
+                    if (prod) {
+                        prod.quantity = Math.max(0, (parseInt(prod.quantity) || 0) - oldItem.quantity);
+                    }
+                });
+            } else {
+                const details = state.Invoice_Items.filter(d => d.invoice_id === listId);
+                details.forEach(detail => {
+                    const product = state.materials.find(m => m.id === detail.product_id);
+                    if (product) {
+                        product.quantity = Math.max(0, (parseInt(product.quantity) || 0) - detail.quantity);
+                    }
+                });
+            }
+            
+            // إزالة حركات التوريد المرتبطة بهذه القائمة
+            state.transactions = state.transactions.filter(t => t.listId !== listId && t.receiptNumber !== invoice.invoice_number);
+        }
+        
+        // حذف الفاتورة وتفاصيلها من السجلات
         state.Invoices.splice(idx, 1);
         state.Invoice_Items = state.Invoice_Items.filter(d => d.invoice_id !== listId);
         
-        showToast('جاري حذف المسودة...', 'info');
-        state.save(); // يرفع بالخلفية دون حجب الواجهة
+        showToast('جاري حذف القائمة وتحديث البيانات...', 'info');
+        state.save(); // يرفع بالخلفية ويزامن مع كلاود فايربيس
         
-        showToast('تم حذف المسودة بنجاح', 'success');
+        showToast(isCompleted ? 'تم حذف القائمة وتعديل أرصدة المخازن بنجاح' : 'تم حذف المسودة بنجاح', 'success');
+        
+        if (typeof closeModal === 'function') {
+            closeModal('receipt-details-modal');
+        }
+        
         renderSavedReceiptsTable();
         renderAdminSidebarMenu();
+        if (typeof renderAdminDashboard === 'function') renderAdminDashboard();
+        if (typeof renderInventory === 'function') renderInventory();
     }
 }
 window.deleteDraftReceipt = deleteDraftReceipt;
+window.deleteInvoice = deleteDraftReceipt;
 
 async function clearAllInvoices() {
     if (confirm('هل أنت متأكد من مسح جميع الفواتير المدخلة وتفاصيلها نهائياً من النظام؟ (لن يؤثر هذا على رصيد المواد الحالي بالمخازن)')) {
@@ -4740,7 +4821,7 @@ function renderSavedReceiptsTable() {
                     </div>
                     <div class="erp-invoice-vendor">
                         <span>${supplierName}</span>
-                        <i class="erp-invoice-vendor-edit-icon" style="cursor: pointer; font-style: normal;" onclick="event.stopPropagation(); ${isDraft ? `loadDraftForEditing('${purchase.id}')` : ''}">✏️</i>
+                        <i class="erp-invoice-vendor-edit-icon" style="cursor: pointer; font-style: normal;" title="تعديل القائمة" onclick="event.stopPropagation(); loadDraftForEditing('${purchase.id}')">✏️</i>
                     </div>
                     <div class="erp-invoice-details-text">
                         رقم التعريف: <code style="color: var(--accent); font-family: monospace;">${purchase.id}</code> | عدد الأصناف: <strong>${detailsLength} أصناف</strong> | مجموع القطع: <strong>${listTotalQty} قطعة</strong>
@@ -4774,13 +4855,12 @@ function renderSavedReceiptsTable() {
                     </button>
                     <div id="dropdown-${purchase.id}" class="erp-invoice-dropdown-menu hidden">
                         <div class="erp-invoice-dropdown-item" onclick="event.stopPropagation(); showReceiptDetails('${purchase.id}'); hideAllInvoiceDropdowns();">🔍 عرض التفاصيل</div>
+                        <div class="erp-invoice-dropdown-item" onclick="event.stopPropagation(); loadDraftForEditing('${purchase.id}'); hideAllInvoiceDropdowns();">✏️ تعديل القائمة</div>
                         ${isDraft ? `
-                            <div class="erp-invoice-dropdown-item" onclick="event.stopPropagation(); loadDraftForEditing('${purchase.id}'); hideAllInvoiceDropdowns();">✏️ تعديل المسودة</div>
                             <div class="erp-invoice-dropdown-item" onclick="event.stopPropagation(); confirmDraftReceipt('${purchase.id}'); hideAllInvoiceDropdowns();">🚀 اعتماد وترحيل</div>
-                            <div class="erp-invoice-dropdown-item" style="color: var(--danger);" onclick="event.stopPropagation(); deleteDraftReceipt('${purchase.id}'); hideAllInvoiceDropdowns();">🗑️ حذف الفاتورة</div>
-                        ` : `
-                            <div class="erp-invoice-dropdown-item" onclick="event.stopPropagation(); generateReceiptInvoicePDF('${purchase.id}'); hideAllInvoiceDropdowns();">📄 تصدير PDF</div>
-                        `}
+                        ` : ''}
+                        <div class="erp-invoice-dropdown-item" onclick="event.stopPropagation(); generateReceiptInvoicePDF('${purchase.id}'); hideAllInvoiceDropdowns();">📄 تصدير PDF</div>
+                        <div class="erp-invoice-dropdown-item" style="color: var(--danger); font-weight: 600;" onclick="event.stopPropagation(); deleteDraftReceipt('${purchase.id}'); hideAllInvoiceDropdowns();">🗑️ حذف القائمة</div>
                     </div>
                 </div>
             </div>
