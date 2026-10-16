@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>نظام جرد وإدارة مخازن مواد القسطرة</title>
-    <link rel="stylesheet" href="styles.css?v=2.1.3">
+    <link rel="stylesheet" href="styles.css?v=2.1.4">
 </head>
 <body>
 
@@ -627,6 +627,118 @@
                                         <option value="10">10 قائمة</option>
                                         <option value="15">15 قائمة</option>
                                         <option value="20">20 قائمة</option>
+                                        <option value="all">الكل</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- محتويات التبويب 10: تفاصيل المواد المدخلة بالنظام -->
+                    <div id="tab-system-materials" class="tab-pane">
+                        <div class="card" style="background: linear-gradient(135deg, var(--bg-secondary) 0%, #0f172a 100%); border: 1px solid var(--border-color); margin: 0;">
+                            <!-- رأس الكارد -->
+                            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                                <div>
+                                    <h3 class="card-title" style="display:flex; align-items:center; gap:8px;">
+                                        <span>📦</span>
+                                        <span>تفاصيل المواد المدخلة بالنظام</span>
+                                    </h3>
+                                    <p style="margin:4px 0 0; font-size:0.8rem; color:var(--text-secondary);">
+                                        عرض وتعديل وحذف كافة المواد والتشغيلات الطبية المسجلة بالنظام
+                                    </p>
+                                </div>
+                                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                    <button class="btn btn-primary" onclick="openQuickAddMaterial(null, '')" style="font-size:0.85rem; padding:6px 12px; display:inline-flex; align-items:center; gap:6px;">
+                                        ➕ إضافة مادة جديدة
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="renderSystemMaterialsTable()" style="font-size:0.85rem; padding:6px 12px; display:inline-flex; align-items:center; gap:6px;">
+                                        🔄 تحديث
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- إحصائيات سريعة للمواد -->
+                            <div style="padding: 15px 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; background: rgba(0,0,0,0.15); border-bottom: 1px solid var(--border-color);">
+                                <div class="stat-mini-box" style="background: var(--bg-secondary); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; flex-direction: column;">
+                                    <span style="font-size: 0.75rem; color: var(--text-secondary);">إجمالي بنود وسجلات المواد:</span>
+                                    <strong id="stat-system-mat-total-records" style="font-size: 1.15rem; color: var(--primary); margin-top: 4px;">0</strong>
+                                </div>
+                                <div class="stat-mini-box" style="background: var(--bg-secondary); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; flex-direction: column;">
+                                    <span style="font-size: 0.75rem; color: var(--text-secondary);">أنواع المواد الفريدة:</span>
+                                    <strong id="stat-system-mat-unique-names" style="font-size: 1.15rem; color: #a855f7; margin-top: 4px;">0</strong>
+                                </div>
+                                <div class="stat-mini-box" style="background: var(--bg-secondary); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; flex-direction: column;">
+                                    <span style="font-size: 0.75rem; color: var(--text-secondary);">إجمالي القطع في المخازن:</span>
+                                    <strong id="stat-system-mat-total-qty" style="font-size: 1.15rem; color: var(--success); margin-top: 4px;">0</strong>
+                                </div>
+                                <div class="stat-mini-box" style="background: var(--bg-secondary); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; flex-direction: column;">
+                                    <span style="font-size: 0.75rem; color: var(--text-secondary);">القيمة التقديرية الكلية:</span>
+                                    <strong style="font-size: 1.15rem; color: #f59e0b; margin-top: 4px;"><span id="stat-system-mat-total-value">0</span> د.ع</strong>
+                                </div>
+                            </div>
+
+                            <!-- شريط أدوات البحث والفلترة -->
+                            <div style="padding: 15px 20px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color);">
+                                <div style="display: flex; flex-wrap: wrap; gap: 10px; flex: 1; min-width: 280px;">
+                                    <div style="flex: 2; min-width: 200px;">
+                                        <input type="text" id="system-materials-search" class="form-control" placeholder="🔍 بحث باسم المادة، الشركة، رقم الباج..." oninput="filterSystemMaterials()" style="font-size: 0.85rem; height: 38px;">
+                                    </div>
+                                    <div style="flex: 1; min-width: 140px;">
+                                        <select id="system-materials-category-filter" class="form-control" onchange="filterSystemMaterials()" style="font-size: 0.85rem; height: 38px; cursor: pointer;">
+                                            <option value="all">كل التصنيفات</option>
+                                        </select>
+                                    </div>
+                                    <div style="flex: 1; min-width: 130px;">
+                                        <select id="system-materials-store-filter" class="form-control" onchange="filterSystemMaterials()" style="font-size: 0.85rem; height: 38px; cursor: pointer;">
+                                            <option value="all">كل المخازن</option>
+                                            <option value="store1">مخزن 1 (الرئيسي)</option>
+                                            <option value="store2">مخزن 2 (الفرعي)</option>
+                                        </select>
+                                    </div>
+                                    <div style="flex: 1; min-width: 130px;">
+                                        <select id="system-materials-stock-filter" class="form-control" onchange="filterSystemMaterials()" style="font-size: 0.85rem; height: 38px; cursor: pointer;">
+                                            <option value="all">كل الحالات</option>
+                                            <option value="in-stock">متوفر بالمخزن</option>
+                                            <option value="zero-stock">رصيد صفر (قالب)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- جدول المواد المدخلة بالنظام -->
+                            <div class="table-responsive" style="margin: 0; min-height: 250px;">
+                                <table class="table" style="width: 100%; border-collapse: collapse;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 40px; text-align: center;">#</th>
+                                            <th>اسم المادة الطبية</th>
+                                            <th>التصنيف</th>
+                                            <th>الشركة المصنعة</th>
+                                            <th>رقم التشغيلة (الباج)</th>
+                                            <th>تاريخ الصلاحية</th>
+                                            <th>المخزن</th>
+                                            <th style="text-align: center;">الكمية</th>
+                                            <th style="text-align: left;">سعر المفرد</th>
+                                            <th style="text-align: left;">القيمة الكلية</th>
+                                            <th style="text-align: center; width: 140px;">إجراءات</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="system-materials-tbody">
+                                        <!-- تعبأ ديناميكياً بواسطة JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- ترقيم الصفحات -->
+                            <div class="pagination-container" style="display:flex; justify-content:space-between; align-items:center; padding:12px 15px; background:var(--bg-secondary); border-top:1px solid var(--border-color); flex-wrap:wrap; gap:10px; direction: rtl; border-bottom-left-radius:var(--radius-md); border-bottom-right-radius:var(--radius-md);">
+                                <div style="display:flex; align-items:center; gap:5px;" id="system-materials-pagination-buttons"></div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="font-size:0.85rem; color:var(--text-secondary);">عرض المواد:</span>
+                                    <select id="system-materials-rows-per-page" class="form-control" style="width:90px; padding:4px 8px; font-size:0.85rem; height:32px; cursor:pointer;" onchange="changeStorePageSize('system-materials')">
+                                        <option value="10">10 مواد</option>
+                                        <option value="25">25 مادة</option>
+                                        <option value="50">50 مادة</option>
                                         <option value="all">الكل</option>
                                     </select>
                                 </div>
@@ -1495,6 +1607,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
     <script src="stents_data.js?v=1.0.0"></script>
-    <script src="app.js?v=2.2.5"></script>
+    <script src="app.js?v=2.2.6"></script>
 </body>
 </html>
