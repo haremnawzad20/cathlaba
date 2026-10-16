@@ -1223,6 +1223,9 @@ function renderAdminDashboard() {
     if (document.getElementById('issue-reports-container') || document.getElementById('issue-reports-tbody')) {
         renderIssueReportsTable();
     }
+    if (document.getElementById('tab-system-materials') && document.getElementById('tab-system-materials').classList.contains('active')) {
+        renderSystemMaterialsTable();
+    }
     renderAdminSidebarMenu();
 }
 
@@ -1645,7 +1648,8 @@ let paginationConfig = {
     store2: { page: 1, rowsPerPage: 10 },
     'grand-total': { page: 1, rowsPerPage: 10 },
     forecast: { page: 1, rowsPerPage: 10 },
-    invoices: { page: 1, rowsPerPage: 10 }
+    invoices: { page: 1, rowsPerPage: 10 },
+    'system-materials': { page: 1, rowsPerPage: 10 }
 };
 
 function changeStorePageSize(storeKey) {
@@ -1661,6 +1665,7 @@ function changeStorePageSize(storeKey) {
     else if (storeKey === 'grand-total') renderGrandTotalTable();
     else if (storeKey === 'forecast') renderForecastPanel();
     else if (storeKey === 'invoices') renderSavedReceiptsTable();
+    else if (storeKey === 'system-materials') renderSystemMaterialsTable();
 }
 window.changeStorePageSize = changeStorePageSize;
 
@@ -1672,6 +1677,7 @@ function changeStorePage(storeKey, pageNum) {
     else if (storeKey === 'grand-total') renderGrandTotalTable();
     else if (storeKey === 'forecast') renderForecastPanel();
     else if (storeKey === 'invoices') renderSavedReceiptsTable();
+    else if (storeKey === 'system-materials') renderSystemMaterialsTable();
 }
 window.changeStorePage = changeStorePage;
 
@@ -3651,6 +3657,8 @@ function switchTab(tabId) {
         }
     } else if (tabId === 'tab-saved-receipts') {
         renderSavedReceiptsTable();
+    } else if (tabId === 'tab-system-materials') {
+        renderSystemMaterialsTable();
     }
 }
 window.switchTab = switchTab;
@@ -3923,6 +3931,9 @@ function submitQuickAddMaterialForm() {
         showToast(`تمت إضافة المادة "${name}" بنجاح إلى قائمة المواد بالنظام!`, 'success');
         if (state.currentUser && state.currentUser.role === 'admin') {
             renderAdminDashboard();
+        }
+        if (typeof renderSystemMaterialsTable === 'function') {
+            renderSystemMaterialsTable();
         }
     }
 }
@@ -6342,6 +6353,9 @@ function submitEditMaterialForm() {
     if (editMaterial(id, name, batch, expiry, qty, company, store, category, source, price)) {
         closeModal('edit-material-modal');
         renderAdminDashboard();
+        if (typeof renderSystemMaterialsTable === 'function') {
+            renderSystemMaterialsTable();
+        }
     }
 }
 
@@ -6572,6 +6586,12 @@ function renderAdminSidebarMenu() {
                                 <button class="menu-item tab-btn ${activeTab === 'tab-saved-receipts' ? 'active' : ''}" data-tab="tab-saved-receipts">
                                     <span class="menu-icon">📋</span>
                                     <span class="menu-text">جميع الفواتير المحفوظة</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button class="menu-item tab-btn ${activeTab === 'tab-system-materials' ? 'active' : ''}" data-tab="tab-system-materials">
+                                    <span class="menu-icon">📦</span>
+                                    <span class="menu-text">تفاصيل المواد المدخلة</span>
                                 </button>
                             </li>
                             ${invoicesListHtml}
@@ -6870,6 +6890,201 @@ function setupSearch() {
         });
     }
 }
+
+// ================= إدارة وعرض تفاصيل المواد المدخلة بالنظام =================
+function filterSystemMaterials() {
+    if (paginationConfig['system-materials']) {
+        paginationConfig['system-materials'].page = 1;
+    }
+    renderSystemMaterialsTable();
+}
+window.filterSystemMaterials = filterSystemMaterials;
+
+function renderSystemMaterialsTable() {
+    const tbody = document.getElementById('system-materials-tbody');
+    if (!tbody) return;
+    
+    // 1. تحديث خيارات فلتر التصنيفات ديناميكياً
+    const catFilter = document.getElementById('system-materials-category-filter');
+    if (catFilter) {
+        const currentVal = catFilter.value;
+        const availableCategories = state.categories || [];
+        const existingValues = Array.from(catFilter.options).map(o => o.value);
+        const needsUpdate = availableCategories.some(c => !existingValues.includes(c)) || catFilter.options.length <= 1;
+        if (needsUpdate) {
+            catFilter.innerHTML = '<option value="all">كل التصنيفات</option>';
+            availableCategories.forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.innerText = cat;
+                if (cat === currentVal) opt.selected = true;
+                catFilter.appendChild(opt);
+            });
+            if (existingValues.includes(currentVal)) {
+                catFilter.value = currentVal;
+            }
+        }
+    }
+    
+    const searchVal = document.getElementById('system-materials-search') ? document.getElementById('system-materials-search').value.trim().toLowerCase() : '';
+    const selectedCategory = catFilter ? catFilter.value : 'all';
+    const storeFilter = document.getElementById('system-materials-store-filter') ? document.getElementById('system-materials-store-filter').value : 'all';
+    const stockFilter = document.getElementById('system-materials-stock-filter') ? document.getElementById('system-materials-stock-filter').value : 'all';
+    
+    // 2. حساب وتحديث الإحصائيات في الصناديق العلوية
+    const allMaterials = state.materials || [];
+    const uniqueNames = new Set(allMaterials.map(m => m.name ? m.name.trim().toLowerCase() : '')).size;
+    const totalQty = allMaterials.reduce((sum, m) => sum + (m.quantity || 0), 0);
+    const totalValue = allMaterials.reduce((sum, m) => sum + ((m.quantity || 0) * (m.price || 0)), 0);
+    
+    const statRecs = document.getElementById('stat-system-mat-total-records');
+    const statNames = document.getElementById('stat-system-mat-unique-names');
+    const statQty = document.getElementById('stat-system-mat-total-qty');
+    const statVal = document.getElementById('stat-system-mat-total-value');
+    
+    if (statRecs) statRecs.innerText = allMaterials.length;
+    if (statNames) statNames.innerText = uniqueNames;
+    if (statQty) statQty.innerText = totalQty.toLocaleString();
+    if (statVal) statVal.innerText = totalValue.toLocaleString();
+    
+    // 3. الفلترة والتصفية
+    let filtered = allMaterials.filter(m => {
+        if (!m.name) return false;
+        
+        // البحث
+        if (searchVal) {
+            const matchesName = m.name.toLowerCase().includes(searchVal);
+            const matchesCompany = (m.company || '').toLowerCase().includes(searchVal);
+            const matchesBatch = (m.batchNumber || '').toLowerCase().includes(searchVal);
+            const matchesCategory = (m.category || '').toLowerCase().includes(searchVal);
+            if (!matchesName && !matchesCompany && !matchesBatch && !matchesCategory) return false;
+        }
+        
+        // التصنيف
+        if (selectedCategory !== 'all' && m.category !== selectedCategory) return false;
+        
+        // المخزن
+        if (storeFilter !== 'all' && m.store !== storeFilter) return false;
+        
+        // حالة الرصيد
+        if (stockFilter === 'in-stock' && (!m.quantity || m.quantity <= 0)) return false;
+        if (stockFilter === 'zero-stock' && m.quantity > 0) return false;
+        
+        return true;
+    });
+    
+    // 4. ترقيم الصفحات
+    const totalItems = filtered.length;
+    const config = paginationConfig['system-materials'] || { page: 1, rowsPerPage: 10 };
+    
+    if (config.rowsPerPage !== 'all') {
+        const totalPages = Math.ceil(totalItems / config.rowsPerPage) || 1;
+        if (config.page > totalPages) {
+            config.page = totalPages;
+        }
+    }
+    
+    let displayedItems = filtered;
+    if (config.rowsPerPage !== 'all') {
+        const startIndex = (config.page - 1) * config.rowsPerPage;
+        const endIndex = startIndex + config.rowsPerPage;
+        displayedItems = filtered.slice(startIndex, endIndex);
+    }
+    
+    renderPaginationButtons('system-materials', totalItems);
+    
+    // 5. رسم صفوف الجدول
+    tbody.innerHTML = '';
+    if (displayedItems.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="11" style="text-align: center; padding: 35px 20px; color: var(--text-secondary); font-size: 0.95rem;">
+                    🔍 لا توجد مواد تطابق معايير البحث والفلترة المحددة
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    const startIndex = (config.rowsPerPage === 'all') ? 0 : (config.page - 1) * config.rowsPerPage;
+    const today = new Date().toISOString().split('T')[0];
+    
+    displayedItems.forEach((mat, idx) => {
+        const tr = document.createElement('tr');
+        tr.style.transition = 'background-color 0.15s ease';
+        
+        const rowNum = startIndex + idx + 1;
+        const isTemplate = mat.batchNumber === 'TEMPLATE' || !mat.batchNumber;
+        const qty = mat.quantity || 0;
+        const price = mat.price || 0;
+        const lineTotal = qty * price;
+        
+        // فحص تاريخ الصلاحية
+        let expiryBadge = `<span style="font-size:0.85rem; color:var(--text-secondary);">${mat.expiryDate || '—'}</span>`;
+        if (mat.expiryDate && !isTemplate) {
+            if (mat.expiryDate < today) {
+                expiryBadge = `<span class="badge" style="background:rgba(239,68,68,0.2); color:#ef4444; font-weight:bold;">منتهي (${mat.expiryDate})</span>`;
+            } else {
+                const diffDays = Math.ceil((new Date(mat.expiryDate) - new Date(today)) / (1000 * 60 * 60 * 24));
+                if (diffDays <= 60) {
+                    expiryBadge = `<span class="badge" style="background:rgba(245,158,11,0.2); color:#f59e0b; font-weight:bold;">قريب (${mat.expiryDate})</span>`;
+                }
+            }
+        }
+        
+        // شارة المخزن
+        const storeBadge = mat.store === 'store1' 
+            ? `<span class="badge" style="background:rgba(37,99,235,0.15); color:#60a5fa; font-size:0.8rem;">مخزن 1 (الرئيسي)</span>`
+            : `<span class="badge" style="background:rgba(16,185,129,0.15); color:#34d399; font-size:0.8rem;">مخزن 2 (الفرعي)</span>`;
+            
+        // شارة الكمية
+        const qtyBadge = qty > 0
+            ? `<span class="badge" style="background:rgba(16,185,129,0.2); color:#10b981; font-weight:800; font-size:0.9rem; padding:3px 10px;">${qty}</span>`
+            : `<span class="badge" style="background:rgba(148,163,184,0.15); color:var(--text-secondary); font-size:0.8rem;">0 (رصيد مسجل)</span>`;
+            
+        tr.innerHTML = `
+            <td style="text-align: center; color: var(--text-secondary); font-size: 0.85rem;">${rowNum}</td>
+            <td>
+                <strong style="color: var(--text-primary); font-size: 0.95rem;">${mat.name}</strong>
+                ${isTemplate ? '<span class="tag" style="font-size:0.65rem; margin-right:6px; background:rgba(99,102,241,0.15); color:#818cf8;">تعريف عام</span>' : ''}
+            </td>
+            <td><span class="tag" style="font-size:0.75rem; background:rgba(59,130,246,0.12); color:#60a5fa;">${mat.category || 'عامة'}</span></td>
+            <td style="color: var(--text-secondary); font-size: 0.85rem;">${mat.company || '—'}</td>
+            <td><code style="font-size:0.85rem; padding:2px 6px; border-radius:4px; background:var(--bg-tertiary);">${isTemplate ? '—' : mat.batchNumber}</code></td>
+            <td>${expiryBadge}</td>
+            <td>${storeBadge}</td>
+            <td style="text-align: center;">${qtyBadge}</td>
+            <td style="text-align: left; font-weight: 600; font-size: 0.88rem; direction: ltr;">${price.toLocaleString()} د.ع</td>
+            <td style="text-align: left; font-weight: 700; color: var(--success); font-size: 0.88rem; direction: ltr;">${lineTotal.toLocaleString()} د.ع</td>
+            <td style="text-align: center;">
+                <div style="display: inline-flex; gap: 6px; align-items: center; justify-content: center;">
+                    <button type="button" class="btn btn-primary" onclick="openEditMaterialModal('${mat.id}')" style="padding: 4px 8px; font-size: 0.78rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;" title="تعديل تفاصيل المادة">
+                        ✏️ تعديل
+                    </button>
+                    <button type="button" class="btn btn-danger" onclick="triggerDeleteSystemMaterial('${mat.id}')" style="padding: 4px 8px; font-size: 0.78rem; background-color: #ef4444; border-color: #ef4444; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;" title="حذف المادة من النظام">
+                        🗑️ حذف
+                    </button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+window.renderSystemMaterialsTable = renderSystemMaterialsTable;
+
+function triggerDeleteSystemMaterial(id) {
+    const mat = state.materials.find(m => m.id === id);
+    if (!mat) return;
+    
+    const batchInfo = (mat.batchNumber && mat.batchNumber !== 'TEMPLATE') ? ` (دفعة: ${mat.batchNumber})` : '';
+    if (confirm(`هل أنت متأكد من حذف المادة "${mat.name}"${batchInfo} نهائياً من النظام؟\nسيتم شطبها من المخازن وحذف قيدها بشكل دائم.`)) {
+        if (deleteMaterial(id)) {
+            renderSystemMaterialsTable();
+            if (typeof renderAdminDashboard === 'function') renderAdminDashboard();
+        }
+    }
+}
+window.triggerDeleteSystemMaterial = triggerDeleteSystemMaterial;
 
 // تهيئة التطبيق عند التحميل
 document.addEventListener('DOMContentLoaded', () => {
