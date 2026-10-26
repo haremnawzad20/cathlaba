@@ -60,9 +60,9 @@ const DEFAULT_USERS = {
 const MOCK_MATERIALS = [
     { id: 'mat-1', name: 'قسطرة تشخيصية JL4 6F', batchNumber: 'B2026A', expiryDate: '2026-08-15', quantity: 150, company: 'Medtronic', store: 'store1', category: 'قساطر تشخيصية' },
     { id: 'mat-2', name: 'بالون توسيع القسطرة 3.0x15mm', batchNumber: 'B9921X', expiryDate: '2026-11-20', quantity: 80, company: 'Boston Scientific', store: 'store1', category: 'بالونات' },
-    { id: 'mat-3', name: 'شبكية قسطرة معدنية 2.75x24mm', batchNumber: 'B8872D', expiryDate: '2027-04-10', quantity: 45, company: 'Abbott', store: 'store1', category: 'شبكات' },
+    { id: 'mat-3', name: 'شبكية قسطرة معدنية 2.75x24mm', batchNumber: 'B8872D', expiryDate: '2027-04-10', quantity: 45, company: 'Abbott', store: 'store1', category: 'STENT' },
     { id: 'mat-4', name: 'سلك توجيه القسطرة 0.014" 190cm', batchNumber: 'B1123K', expiryDate: '2026-09-01', quantity: 120, company: 'Terumo', store: 'store1', category: 'أسلاك توجيهية' },
-    { id: 'mat-5', name: 'غلاف قسطرة 6F Introducer Sheath', batchNumber: 'B3345M', expiryDate: '2028-02-18', quantity: 95, company: 'Terumo', store: 'store1', category: 'أخرى' },
+    { id: 'mat-5', name: 'غلاف قسطرة 6F Introducer Sheath', batchNumber: 'B3345M', expiryDate: '2028-02-18', quantity: 95, company: 'Terumo', store: 'store1', category: 'STENT' },
     
     // مخزن 2
     { id: 'mat-6', name: 'قسطرة تشخيصية JL4 6F', batchNumber: 'B2026A', expiryDate: '2026-08-15', quantity: 30, company: 'Medtronic', store: 'store2', category: 'قساطر تشخيصية' },
@@ -90,7 +90,7 @@ const MOCK_ORDERS = [
 ];
 
 // تصنيفات المواد الافتراضية
-const DEFAULT_CATEGORIES = ['شبكات', 'بالونات', 'قساطر تشخيصية', 'أسلاك توجيهية', 'أخرى'];
+const DEFAULT_CATEGORIES = ['STENT', 'بالونات', 'قساطر تشخيصية', 'أسلاك توجيهية', 'أخرى'];
 
 // تكوين النظام الافتراضي
 const DEFAULT_CONFIG = {
@@ -144,6 +144,9 @@ class AppState {
 
         // استيراد وضمان وجود بيانات شبكات مخزن 2 (176 مادة) من تقرير الجرد
         this.ensureStore2StentsImported();
+
+        // تحويل كافة المواد المصنفة "أخرى" أو بدون تصنيف تلقائياً إلى "STENT"
+        this.migrateOtherCategoriesToStent();
         
         this.isSaving = false; // تهيئة متغير حالة الحفظ لمنع تعارض المزامنة
         
@@ -201,6 +204,60 @@ class AppState {
             localStorage.setItem('cath_materials', JSON.stringify(this.materials));
             localStorage.setItem('cath_invoices', JSON.stringify(this.Invoices));
             console.log(`[Stents Import] Successfully ensured ${addedCount} stent items imported into store2.`);
+        }
+    }
+
+    migrateOtherCategoriesToStent() {
+        if (!this.materials) return;
+        let modified = false;
+
+        // التأكد من وجود STENT في قائمة التصنيفات
+        if (!this.categories) this.categories = [];
+        if (!this.categories.includes('STENT')) {
+            const indexShabakat = this.categories.indexOf('شبكات');
+            if (indexShabakat !== -1) {
+                this.categories[indexShabakat] = 'STENT';
+            } else {
+                this.categories.unshift('STENT');
+            }
+            modified = true;
+        }
+        if (this.categories.includes('شبكات')) {
+            this.categories = this.categories.filter(c => c !== 'شبكات');
+            modified = true;
+        }
+
+        this.materials.forEach(mat => {
+            const cat = mat.category ? mat.category.trim() : '';
+            const isOther = (!cat) || cat === 'أخرى' || cat === 'اخرى' || cat.toLowerCase() === 'other' || cat === 'شبكات';
+            if (isOther) {
+                mat.category = 'STENT';
+                modified = true;
+            }
+        });
+
+        if (this.Invoices && Array.isArray(this.Invoices)) {
+            this.Invoices.forEach(inv => {
+                if (inv.items && Array.isArray(inv.items)) {
+                    inv.items.forEach(item => {
+                        const cat = item.category ? item.category.trim() : '';
+                        const isOther = (!cat) || cat === 'أخرى' || cat === 'اخرى' || cat.toLowerCase() === 'other' || cat === 'شبكات';
+                        if (isOther) {
+                            item.category = 'STENT';
+                            modified = true;
+                        }
+                    });
+                }
+            });
+        }
+
+        if (modified) {
+            localStorage.setItem('cath_materials', JSON.stringify(this.materials));
+            localStorage.setItem('cath_categories', JSON.stringify(this.categories));
+            if (this.Invoices) {
+                localStorage.setItem('cath_invoices', JSON.stringify(this.Invoices));
+            }
+            console.log('[Category Migration] Successfully migrated all "أخرى" materials to "STENT".');
         }
     }
 
@@ -408,6 +465,7 @@ class AppState {
 
         if (updated) {
             this.ensureStore2StentsImported();
+            this.migrateOtherCategoriesToStent();
             updateCloudStatus('connected');
             updateCategoryUI();
             if (this.currentUser) {
@@ -563,12 +621,15 @@ if (hasUndesirable) {
         if (mat.category) {
             const lowerCat = mat.category.toLowerCase().trim();
             if (undesirableKeywords.some(kw => lowerCat.includes(kw))) {
-                mat.category = 'أخرى';
+                mat.category = 'بالونات';
             }
         }
     });
     state.save();
 }
+
+// تحويل أي مادة مصنفة "أخرى" تلقائياً إلى "STENT"
+state.migrateOtherCategoriesToStent();
 
 // فلاتر التصنيفات النشطة
 let currentAdminCategoryFilter = 'all';
