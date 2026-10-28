@@ -56,31 +56,14 @@ const DEFAULT_USERS = {
     'transfers': { username: 'transfers', name: 'المناقلات', role: 'customer', password: '123', permission: 'full' }
 };
 
-// 2. تهيئة البيانات التجريبية للمخزن إذا كان فارغاً (شاملاً حقل التصنيف)
-const MOCK_MATERIALS = [
-    { id: 'mat-1', name: 'قسطرة تشخيصية JL4 6F', batchNumber: 'B2026A', expiryDate: '2026-08-15', quantity: 150, company: 'Medtronic', store: 'store1', category: 'قساطر تشخيصية' },
-    { id: 'mat-2', name: 'بالون توسيع القسطرة 3.0x15mm', batchNumber: 'B9921X', expiryDate: '2026-11-20', quantity: 80, company: 'Boston Scientific', store: 'store1', category: 'بالونات' },
-    { id: 'mat-3', name: 'شبكية قسطرة معدنية 2.75x24mm', batchNumber: 'B8872D', expiryDate: '2027-04-10', quantity: 45, company: 'Abbott', store: 'store1', category: 'STENT' },
-    { id: 'mat-4', name: 'سلك توجيه القسطرة 0.014" 190cm', batchNumber: 'B1123K', expiryDate: '2026-09-01', quantity: 120, company: 'Terumo', store: 'store1', category: 'أسلاك توجيهية' },
-    { id: 'mat-5', name: 'غلاف قسطرة 6F Introducer Sheath', batchNumber: 'B3345M', expiryDate: '2028-02-18', quantity: 95, company: 'Terumo', store: 'store1', category: 'STENT' },
-    
-    // مخزن 2
-    { id: 'mat-6', name: 'قسطرة تشخيصية JL4 6F', batchNumber: 'B2026A', expiryDate: '2026-08-15', quantity: 30, company: 'Medtronic', store: 'store2', category: 'قساطر تشخيصية' },
-    { id: 'mat-7', name: 'بالون توسيع القسطرة 3.0x15mm', batchNumber: 'B9921X', expiryDate: '2026-11-20', quantity: 15, company: 'Boston Scientific', store: 'store2', category: 'بالونات' },
-];
+// 2. تهيئة البيانات التجريبية للمخزن إذا كان فارغاً (اعتماد رصيد جرد مخزن 2)
+const MOCK_MATERIALS = (typeof STENTS_STORE2_DATA !== 'undefined' && Array.isArray(STENTS_STORE2_DATA))
+    ? [...STENTS_STORE2_DATA]
+    : [];
 
-if (typeof STENTS_STORE2_DATA !== 'undefined' && Array.isArray(STENTS_STORE2_DATA)) {
-    MOCK_MATERIALS.push(...STENTS_STORE2_DATA);
-}
-
-// تهيئة حركات سابقة وهمية لحساب الصرفية (تخمين صرفيات المواد للاكسباير)
+// تهيئة حركات سابقة للمخزن
 const MOCK_TRANSACTIONS = [
-    { id: 'tx-1', type: 'issue', fromStore: 'store1', toDest: 'شعبة القسطرة', materialName: 'قسطرة تشخيصية JL4 6F', batchNumber: 'B2026A', quantity: 45, date: '2026-05-10' },
-    { id: 'tx-2', type: 'issue', fromStore: 'store2', toDest: 'شعبة القسطرة', materialName: 'قسطرة تشخيصية JL4 6F', batchNumber: 'B2026A', quantity: 35, date: '2026-06-12' },
-    { id: 'tx-3', type: 'issue', fromStore: 'store1', toDest: 'المناقلات', materialName: 'سلك توجيه القسطرة 0.014" 190cm', batchNumber: 'B1123K', quantity: 40, date: '2026-05-20' },
-    { id: 'tx-4', type: 'issue', fromStore: 'store2', toDest: 'شعبة القسطرة', materialName: 'سلك توجيه القسطرة 0.014" 190cm', batchNumber: 'B1123K', quantity: 30, date: '2026-06-15' },
-    { id: 'tx-5', type: 'issue', fromStore: 'store1', toDest: 'شعبة القسطرة', materialName: 'بالون توسيع القسطرة 3.0x15mm', batchNumber: 'B9921X', expiryDate: '2026-11-20', quantity: 20, date: '2026-06-01' },
-    { id: 'tx-6', type: 'issue', fromStore: 'store1', toDest: 'شعبة القسطرة', materialName: 'شبكية قسطرة معدنية 2.75x24mm', batchNumber: 'B8872D', quantity: 8, date: '2026-06-25' }
+    { id: 'tx-import-20261028', type: 'reconcile', fromStore: 'store2', toDest: 'جرد عام واعتماد أرصدة جديدة', materialName: 'كافة شبكات Boston Scientific', batchNumber: '2026-10-28', quantity: 1069, date: '2026-10-28' }
 ];
 
 // تهيئة طلبيات وهمية
@@ -110,6 +93,20 @@ class AppState {
         if ((localMaterials && localMaterials.includes('??')) || (localConfig && localConfig.includes('??'))) {
             console.warn('Local storage data is corrupted with question marks. Clearing local cache to restore Arabic text.');
             localStorage.clear();
+        }
+
+        // إعادة تعيين وحذف المواد السابقة واعتماد جرد 2026-10-28 الجديد
+        const INVENTORY_VERSION = '20261028_v1';
+        if (localStorage.getItem('cath_inventory_version') !== INVENTORY_VERSION) {
+            localStorage.removeItem('cath_materials');
+            localStorage.removeItem('cath_invoices');
+            localStorage.removeItem('cath_receipt_lists');
+            localStorage.removeItem('cath_purchase_invoices');
+            localStorage.removeItem('cath_invoice_items');
+            localStorage.removeItem('cath_purchases');
+            localStorage.removeItem('cath_purchase_details');
+            localStorage.removeItem('cath_transactions');
+            localStorage.setItem('cath_inventory_version', INVENTORY_VERSION);
         }
 
         this.materials = JSON.parse(localStorage.getItem('cath_materials')) || MOCK_MATERIALS;
@@ -158,23 +155,32 @@ class AppState {
     }
 
     ensureStore2StentsImported() {
-        if (!this.materials) this.materials = [];
-        let addedCount = 0;
-        if (typeof STENTS_STORE2_DATA !== 'undefined' && Array.isArray(STENTS_STORE2_DATA)) {
-            STENTS_STORE2_DATA.forEach(stent => {
-                const exists = this.materials.some(m => 
-                    m.id === stent.id || 
-                    (m.name === stent.name && m.batchNumber === stent.batchNumber && m.store === 'store2' && m.expiryDate === stent.expiryDate)
-                );
-                if (!exists) {
-                    this.materials.push({ ...stent });
-                    addedCount++;
-                }
-            });
+        if (!this.materials || this.materials.length === 0) {
+            this.materials = (typeof STENTS_STORE2_DATA !== 'undefined' && Array.isArray(STENTS_STORE2_DATA))
+                ? [...STENTS_STORE2_DATA]
+                : [];
+        } else if (typeof STENTS_STORE2_DATA !== 'undefined' && Array.isArray(STENTS_STORE2_DATA)) {
+            const validIds = new Set(STENTS_STORE2_DATA.map(s => s.id));
+            const hasOldMats = this.materials.some(m => !validIds.has(m.id) && !m.id.startsWith('mat-stent-'));
+            if (hasOldMats) {
+                this.materials = [...STENTS_STORE2_DATA];
+            } else {
+                let addedCount = 0;
+                STENTS_STORE2_DATA.forEach(stent => {
+                    const exists = this.materials.some(m => 
+                        m.id === stent.id || 
+                        (m.name === stent.name && m.batchNumber === stent.batchNumber && m.store === 'store2' && m.expiryDate === stent.expiryDate)
+                    );
+                    if (!exists) {
+                        this.materials.push({ ...stent });
+                        addedCount++;
+                    }
+                });
+            }
         }
 
         if (!this.Invoices) this.Invoices = [];
-        const invoiceExists = this.Invoices.some(inv => inv.id === 'inv-stents-store2' || inv.invoice_number === 'INV-STENTS-STORE2');
+        const invoiceExists = this.Invoices.some(inv => inv.id === 'inv-stents-store2' || inv.invoice_number === 'INV-2026-10-28');
         if (!invoiceExists && typeof STENTS_STORE2_DATA !== 'undefined' && Array.isArray(STENTS_STORE2_DATA)) {
             const invoiceItems = STENTS_STORE2_DATA.map(stent => ({
                 name: stent.name,
@@ -190,21 +196,18 @@ class AppState {
             const totalAmt = invoiceItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
             this.Invoices.unshift({
                 id: 'inv-stents-store2',
-                invoice_number: 'INV-STENTS-STORE2',
-                supplier_name: 'شعبة جرد المخازن الطبية',
-                date: '2026-10-11',
-                created_at: '2026-10-11',
+                invoice_number: 'INV-2026-10-28',
+                supplier_name: 'تقرير جرد مخزن 2 (Boston Scientific)',
+                date: '2026-10-28',
+                created_at: '2026-10-28',
                 status: 'completed',
                 total_amount: totalAmt,
                 items: invoiceItems
             });
         }
 
-        if (addedCount > 0 || !invoiceExists) {
-            localStorage.setItem('cath_materials', JSON.stringify(this.materials));
-            localStorage.setItem('cath_invoices', JSON.stringify(this.Invoices));
-            console.log(`[Stents Import] Successfully ensured ${addedCount} stent items imported into store2.`);
-        }
+        localStorage.setItem('cath_materials', JSON.stringify(this.materials));
+        localStorage.setItem('cath_invoices', JSON.stringify(this.Invoices));
     }
 
     migrateOtherCategoriesToStent() {
