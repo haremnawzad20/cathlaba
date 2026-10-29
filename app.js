@@ -95,8 +95,8 @@ class AppState {
             localStorage.clear();
         }
 
-        // إعادة تعيين وحذف المواد السابقة واعتماد جرد 2026-10-28 الجديد
-        const INVENTORY_VERSION = '20261028_v1';
+        // إعادة تعيين وحذف المواد السابقة واعتماد جرد 2026-10-28 الجديد وتحويل المصدر إلى عامة
+        const INVENTORY_VERSION = '20261029_v2';
         if (localStorage.getItem('cath_inventory_version') !== INVENTORY_VERSION) {
             localStorage.removeItem('cath_materials');
             localStorage.removeItem('cath_invoices');
@@ -179,6 +179,15 @@ class AppState {
             }
         }
 
+        // ضمان تحويل كافة مواد مخزن 2 من فاتورة إلى عامة
+        if (this.materials) {
+            this.materials.forEach(m => {
+                if (m.store === 'store2' && (m.sourceType === 'فاتورة' || !m.sourceType)) {
+                    m.sourceType = 'عامة';
+                }
+            });
+        }
+
         if (!this.Invoices) this.Invoices = [];
         const invoiceExists = this.Invoices.some(inv => inv.id === 'inv-stents-store2' || inv.invoice_number === 'INV-2026-10-28');
         if (!invoiceExists && typeof STENTS_STORE2_DATA !== 'undefined' && Array.isArray(STENTS_STORE2_DATA)) {
@@ -189,7 +198,7 @@ class AppState {
                 expiryDate: stent.expiryDate,
                 store: stent.store,
                 category: stent.category,
-                sourceType: stent.sourceType,
+                sourceType: stent.sourceType || 'عامة',
                 price: stent.price,
                 quantity: stent.quantity
             }));
@@ -203,6 +212,18 @@ class AppState {
                 status: 'completed',
                 total_amount: totalAmt,
                 items: invoiceItems
+            });
+        }
+
+        if (this.Invoices) {
+            this.Invoices.forEach(inv => {
+                if (inv.items) {
+                    inv.items.forEach(it => {
+                        if (it.store === 'store2' && (it.sourceType === 'فاتورة' || !it.sourceType)) {
+                            it.sourceType = 'عامة';
+                        }
+                    });
+                }
             });
         }
 
