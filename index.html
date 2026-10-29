@@ -1030,28 +1030,38 @@
 
     <!-- 5. مودال تفويض واعتماد طلبيات الزبائن (الأدمن) -->
     <div id="approve-order-modal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 640px;">
             <div class="modal-header">
-                <h3 class="modal-title">✓ اعتماد وتجهيز طلبية الزبون</h3>
+                <h3 class="modal-title">✓ اعتماد وتجهيز وصرف طلبية الزبون</h3>
                 <button class="btn-icon" onclick="closeModal('approve-order-modal')">✕</button>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 15px; font-size: 0.95rem;">
-                    أنت بصدد الموافقة على صرف الطلب لـ: <strong id="approve-customer-name" style="color:var(--accent);"></strong>
-                </p>
-                <div style="background:var(--bg-tertiary); padding:15px; border-radius:8px; margin-bottom:15px;">
-                    <span style="font-size:0.85rem; font-weight:700; color:var(--text-secondary); display:block; margin-bottom:8px;">تفاصيل الطلب:</span>
-                    <ul id="approve-items-list" style="margin-right:20px; font-size:0.9rem; line-height:1.6;">
-                        <!-- تعبأ ديناميكياً -->
-                    </ul>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px; padding-bottom:12px; border-bottom:1px solid var(--border-color); flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <span style="font-size:0.85rem; color:var(--text-secondary);">صرف الطلب لجهة:</span>
+                        <strong id="approve-customer-name" style="color:var(--accent); font-size:1.1rem; display:block;"></strong>
+                    </div>
+                    <div>
+                        <span id="approve-order-date" style="font-size:0.8rem; color:var(--text-secondary);"></span>
+                    </div>
                 </div>
-                <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom: 10px;">
-                    سيقوم النظام تلقائياً بخصم وصرف الكميات المطلوبة من **مخزن 2 (الفرعي)** أولاً كأولوية، ومن ثم سحب أي نقص متبقي من **مخزن 1 (الرئيسي)**.
-                </p>
+
+                <div style="margin-bottom:15px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <span style="font-size:0.9rem; font-weight:700; color:var(--text-primary);">المواد المطلوبة واختيار دفعات الصرف (الباج والاكسباير):</span>
+                    </div>
+                    <div id="approve-items-container" style="display:flex; flex-direction:column; gap:12px; max-height:380px; overflow-y:auto; padding-right:4px;">
+                        <!-- تعبأ ديناميكياً بواسطة JS -->
+                    </div>
+                </div>
+
+                <div style="background:var(--bg-tertiary); padding:10px 14px; border-radius:8px; font-size:0.82rem; color:var(--text-secondary); line-height:1.5;">
+                    💡 <strong>ملاحظة الصرف:</strong> يمكنك اختيار وجبة واكسباير محدد لكل مادة، أو ترك الخيار على <strong>تلقائي</strong> ليقوم النظام بصرف الدفعة الأقرب نفاذاً (الأقدم صلاحية أولاً - FEFO) تلقائياً.
+                </div>
             </div>
             <div class="modal-footer" style="justify-content: space-between;">
                 <button class="btn btn-secondary" onclick="closeModal('approve-order-modal')">إلغاء</button>
-                <button class="btn btn-primary" style="background-color: var(--success);" onclick="submitApproveOrder()">✓ تأكيد موافقة وصرف الطلب تلقائياً</button>
+                <button class="btn btn-primary" style="background-color: var(--success); font-weight:700;" onclick="submitApproveOrder()">✓ تأكيد موافقة وصرف الطلبية</button>
             </div>
         </div>
     </div>
@@ -1607,6 +1617,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
     <script src="stents_data.js?v=1.0.3"></script>
-    <script src="app.js?v=2.2.9"></script>
+    <script src="app.js?v=2.3.0"></script>
 </body>
 </html>
