@@ -1057,17 +1057,18 @@ function sendWhatsAppNotification(order) {
     });
 }
 
-// اعتماد الطلب وصرف المواد (من قبل الأدمن)
-function approveCustomerOrder(orderId) {
+// اعتماد الطلب وصرف المواد (من قبل الأدمن) مع إمكانية تحديد وجبة/اكسباير محدد أو الصرف التلقائي لأقرب نفاذ
+function approveCustomerOrder(orderId, chosenBatches = {}) {
     const order = state.orders.find(o => o.id === orderId);
     if (!order || order.status !== 'pending') return false;
 
     let validationFailed = false;
     let missingItemName = '';
 
+    // 1. التحقق من كفاية الأرصدة الإجمالية
     order.items.forEach(item => {
         const totalAvailable = state.materials
-            .filter(m => m.name === item.name)
+            .filter(m => m.name.trim().toLowerCase() === item.name.trim().toLowerCase())
             .reduce((sum, m) => sum + m.quantity, 0);
 
         if (totalAvailable < item.quantity) {
@@ -1083,49 +1084,51 @@ function approveCustomerOrder(orderId) {
 
     order.dispatchedItems = [];
 
-    order.items.forEach(item => {
+    // 2. صرف المواد لكل بند في الطلب
+    order.items.forEach((item, idx) => {
         let remainingToDeduct = item.quantity;
+        const chosenBatchId = chosenBatches ? chosenBatches[idx] : 'auto';
 
-        // 1. الخصم أولاً من مخزن 2 (الفرعي) - الدفعات الأقدم صلاحية أولاً
-        const store2Batches = state.materials
-            .filter(m => m.name === item.name && m.store === 'store2' && m.quantity > 0)
-            .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+        // أ) إذا قام الأدمن بتحديد وجبة/اكسباير محدد يدوياً للصرف
+        if (chosenBatchId && chosenBatchId !== 'auto') {
+            const specificMat = state.materials.find(m => m.id === chosenBatchId);
+            if (specificMat && specificMat.quantity > 0) {
+                const deduction = Math.min(specificMat.quantity, remainingToDeduct);
+                specificMat.quantity -= deduction;
+                remainingToDeduct -= deduction;
 
-        for (let mat of store2Batches) {
-            if (remainingToDeduct <= 0) break;
-            
-            const deduction = Math.min(mat.quantity, remainingToDeduct);
-            mat.quantity -= deduction;
-            remainingToDeduct -= deduction;
+                order.dispatchedItems.push({
+                    materialName: specificMat.name,
+                    batchNumber: specificMat.batchNumber,
+                    expiryDate: specificMat.expiryDate,
+                    store: specificMat.store,
+                    quantity: deduction,
+                    manualSelection: true
+                });
 
-            order.dispatchedItems.push({
-                materialName: mat.name,
-                batchNumber: mat.batchNumber,
-                store: mat.store,
-                quantity: deduction
-            });
-
-            state.transactions.unshift({
-                id: 'tx-' + Date.now() + '-' + mat.batchNumber,
-                type: 'issue',
-                fromStore: 'store2',
-                toDest: order.customerName,
-                materialName: mat.name,
-                batchNumber: mat.batchNumber,
-                quantity: deduction,
-                date: new Date().toISOString().split('T')[0]
-            });
+                state.transactions.unshift({
+                    id: 'tx-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4) + '-' + specificMat.batchNumber,
+                    type: 'issue',
+                    fromStore: specificMat.store,
+                    toDest: order.customerName,
+                    materialName: specificMat.name,
+                    batchNumber: specificMat.batchNumber,
+                    quantity: deduction,
+                    date: new Date().toISOString().split('T')[0]
+                });
+            }
         }
 
-        // 2. إذا تبقى عجز، يتم خصمه من مخزن 1 (الرئيسي) - الدفعات الأقدم صلاحية أولاً
+        // ب) إذا لم يحدد وجبة، أو كانت الوجبة المحددة لا تكفي كامل الكمية المطلوبة، يتم الصرف تلقائياً من الأقرب نفاذاً (FEFO)
         if (remainingToDeduct > 0) {
-            const store1Batches = state.materials
-                .filter(m => m.name === item.name && m.store === 'store1' && m.quantity > 0)
+            // جلب كافة الدفعات المتوفرة لهذه المادة (باستثناء الدفعة التي صُرف منها بالفعل) مرتبة تصاعدياً حسب أقرب نفاذ
+            const availableBatches = state.materials
+                .filter(m => m.name.trim().toLowerCase() === item.name.trim().toLowerCase() && m.quantity > 0 && m.id !== chosenBatchId)
                 .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
 
-            for (let mat of store1Batches) {
+            for (let mat of availableBatches) {
                 if (remainingToDeduct <= 0) break;
-                
+
                 const deduction = Math.min(mat.quantity, remainingToDeduct);
                 mat.quantity -= deduction;
                 remainingToDeduct -= deduction;
@@ -1133,14 +1136,16 @@ function approveCustomerOrder(orderId) {
                 order.dispatchedItems.push({
                     materialName: mat.name,
                     batchNumber: mat.batchNumber,
+                    expiryDate: mat.expiryDate,
                     store: mat.store,
-                    quantity: deduction
+                    quantity: deduction,
+                    manualSelection: false
                 });
 
                 state.transactions.unshift({
-                    id: 'tx-' + Date.now() + '-' + mat.batchNumber,
+                    id: 'tx-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4) + '-' + mat.batchNumber,
                     type: 'issue',
-                    fromStore: 'store1',
+                    fromStore: mat.store,
                     toDest: order.customerName,
                     materialName: mat.name,
                     batchNumber: mat.batchNumber,
@@ -1152,9 +1157,11 @@ function approveCustomerOrder(orderId) {
     });
 
     order.status = 'approved';
-    order.sourceStore = 'مخزن 2 ثم 1';
+    const storesUsed = [...new Set(order.dispatchedItems.map(d => d.store === 'store1' ? 'مخزن 1' : 'مخزن 2'))];
+    order.sourceStore = storesUsed.length > 0 ? storesUsed.join(' و ') : 'مخزن 2';
+
     state.save();
-    showToast('تم اعتماد وصرف الطلب بنجاح وتحديث الأرصدة تلقائياً (مخزن 2 ثم 1)', 'success');
+    showToast('تم اعتماد وصرف الطلب بنجاح وتحديث الأرصدة وفق الوجبات وتواريخ النفاذ المحددة', 'success');
     return true;
 }
 
@@ -1680,7 +1687,7 @@ function generateCustomerOrderPDF(order) {
             <div class="meta-info">
                 <div>الجهة الطالبة: <strong>${order.customerName}</strong></div>
                 <div>تاريخ الطلب: <strong>${today}</strong></div>
-                <div>حالة الطلب: <strong>قيد المراجعة والاعتماد</strong></div>
+                <div>حالة الطلب: <strong>${order.status === 'approved' ? '✓ تم الاعتماد والصرف' : order.status === 'rejected' ? '✗ طلب مرفوض' : 'قيد المراجعة والاعتماد'}</strong></div>
             </div>
             
             <table>
@@ -1695,6 +1702,36 @@ function generateCustomerOrderPDF(order) {
                     ${tableRows}
                 </tbody>
             </table>
+            
+            ${order.status === 'approved' && order.dispatchedItems && order.dispatchedItems.length > 0 ? `
+                <div style="margin-top:20px; margin-bottom:10px; font-weight:bold; color:#16a34a; font-size:14px;">
+                    ✓ تفاصيل الوجبات والدفعات المصروفة رسمياً:
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 8%; text-align: center;">#</th>
+                            <th style="width: 42%;">المادة الطبية</th>
+                            <th style="width: 15%; text-align: center;">رقم الوجبة (Batch)</th>
+                            <th style="width: 15%; text-align: center;">تاريخ الصلاحية</th>
+                            <th style="width: 10%; text-align: center;">المخزن</th>
+                            <th style="width: 10%; text-align: center;">الكمية</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${order.dispatchedItems.map((d, dIdx) => `
+                            <tr>
+                                <td style="text-align: center; border: 1px solid #cbd5e1; padding: 8px 10px; font-size: 12px;">${dIdx + 1}</td>
+                                <td style="font-weight: bold; border: 1px solid #cbd5e1; padding: 8px 10px; font-size: 12px;">${d.materialName}</td>
+                                <td style="text-align: center; border: 1px solid #cbd5e1; padding: 8px 10px; font-size: 12px;">${d.batchNumber}</td>
+                                <td style="text-align: center; border: 1px solid #cbd5e1; padding: 8px 10px; font-size: 12px;">${d.expiryDate || '—'}</td>
+                                <td style="text-align: center; border: 1px solid #cbd5e1; padding: 8px 10px; font-size: 12px;">${d.store === 'store1' ? 'مخزن 1' : 'مخزن 2'}</td>
+                                <td style="text-align: center; font-weight: bold; color: #16a34a; border: 1px solid #cbd5e1; padding: 8px 10px; font-size: 12px;">${d.quantity}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            ` : ''}
             
             <p style="font-size: 12px; color: #475569; margin-bottom: 30px;">
                 * يرجى التفضل بالموافقة على صرف المواد المدرجة في الجدول أعلاه لغرض استخدامها في صالات العمليات.
@@ -2950,6 +2987,40 @@ function renderAdminOrderDetails(order, sequenceNumber = 1) {
                 </table>
             </div>
 
+            ${order.status === 'approved' && order.dispatchedItems && order.dispatchedItems.length > 0 ? `
+                <div style="background:var(--bg-tertiary); border:1px solid rgba(16, 185, 129, 0.3); border-radius:8px; padding:15px; margin-bottom: 25px;">
+                    <span class="form-label" style="color:var(--success); font-weight:700; margin-bottom: 10px; display:flex; align-items:center; gap:6px;">
+                        <span>✓ تفاصيل الدفعات والوجبات المصروفة فعلياً:</span>
+                    </span>
+                    <div class="table-responsive">
+                        <table class="table" style="font-size:0.85rem; margin-bottom:0;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%; text-align: center;">#</th>
+                                    <th>اسم المادة الطبية</th>
+                                    <th style="text-align: center;">رقم الوجبة (Batch)</th>
+                                    <th style="text-align: center;">تاريخ الصلاحية</th>
+                                    <th style="text-align: center;">المخزن</th>
+                                    <th style="width: 20%; text-align: center;">الكمية المصروفة</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${order.dispatchedItems.map((d, dIdx) => `
+                                    <tr>
+                                        <td style="text-align: center;">${dIdx + 1}</td>
+                                        <td style="font-weight: 700;">${d.materialName}</td>
+                                        <td style="text-align: center;"><code style="color:var(--accent); font-weight:bold;">${d.batchNumber}</code></td>
+                                        <td style="text-align: center; font-weight:600;">${d.expiryDate || '—'}</td>
+                                        <td style="text-align: center;">${d.store === 'store1' ? 'مخزن 1' : 'مخزن 2'}</td>
+                                        <td style="text-align: center; font-weight: bold; color: var(--success); font-size:1rem;">${d.quantity} قطعة</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
+
             <div style="display:flex; justify-content: space-between; align-items:center; border-top:1px solid var(--border-color); padding-top:15px; flex-wrap:wrap; gap:12px;">
                 <div>
                     <button class="btn btn-secondary" style="padding:8px 16px; font-size:0.85rem; background-color:var(--danger-bg); color:#fca5a5; border-color:rgba(239, 68, 68, 0.2);" onclick="deleteEntireOrderAdmin('${order.id}')">🗑️ حذف وإزالة القائمة</button>
@@ -3200,6 +3271,40 @@ function renderCustomerOrderDetails(order, sequenceNumber = 1) {
                     </tbody>
                 </table>
             </div>
+
+            ${order.status === 'approved' && order.dispatchedItems && order.dispatchedItems.length > 0 ? `
+                <div style="background:var(--bg-tertiary); border:1px solid rgba(16, 185, 129, 0.3); border-radius:8px; padding:15px; margin-bottom: 25px;">
+                    <span class="form-label" style="color:var(--success); font-weight:700; margin-bottom: 10px; display:flex; align-items:center; gap:6px;">
+                        <span>✓ تفاصيل الدفعات والوجبات المستلمة:</span>
+                    </span>
+                    <div class="table-responsive">
+                        <table class="table" style="font-size:0.85rem; margin-bottom:0;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%; text-align: center;">#</th>
+                                    <th>اسم المادة الطبية</th>
+                                    <th style="text-align: center;">رقم الوجبة (Batch)</th>
+                                    <th style="text-align: center;">تاريخ الصلاحية</th>
+                                    <th style="text-align: center;">المخزن</th>
+                                    <th style="width: 20%; text-align: center;">الكمية المستلمة</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${order.dispatchedItems.map((d, dIdx) => `
+                                    <tr>
+                                        <td style="text-align: center;">${dIdx + 1}</td>
+                                        <td style="font-weight: 700;">${d.materialName}</td>
+                                        <td style="text-align: center;"><code style="color:var(--accent); font-weight:bold;">${d.batchNumber}</code></td>
+                                        <td style="text-align: center; font-weight:600;">${d.expiryDate || '—'}</td>
+                                        <td style="text-align: center;">${d.store === 'store1' ? 'مخزن 1' : 'مخزن 2'}</td>
+                                        <td style="text-align: center; font-weight: bold; color: var(--success); font-size:1rem;">${d.quantity} قطعة</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ` : ''}
 
             <div style="display:flex; justify-content: space-between; align-items:center; border-top:1px solid var(--border-color); padding-top:15px; flex-wrap:wrap; gap:12px;">
                 <div>
@@ -3603,16 +3708,70 @@ function openDirectIssueModal(id, store) {
     openModal('direct-issue-modal');
 }
 
-// فتح مودال موافقة الطلبيات
+// فتح مودال موافقة الطلبيات وتحديد دفعات الصرف
 let selectedOrderIdForApproval = null;
 function openApproveModal(id) {
     selectedOrderIdForApproval = id;
     const order = state.orders.find(o => o.id === id);
     if (!order) return;
 
-    document.getElementById('approve-customer-name').innerText = order.customerName;
-    const list = order.items.map(i => `<li>${i.name} (المطلوب: <strong>${i.quantity} قطعة</strong>)</li>`).join('');
-    document.getElementById('approve-items-list').innerHTML = list;
+    const custEl = document.getElementById('approve-customer-name');
+    if (custEl) custEl.innerText = order.customerName;
+
+    const dateEl = document.getElementById('approve-order-date');
+    if (dateEl) {
+        const orderDateStr = order.date ? new Date(order.date).toLocaleDateString('ar-EG') : '';
+        dateEl.innerText = orderDateStr ? `تاريخ الطلب: ${orderDateStr}` : '';
+    }
+
+    const container = document.getElementById('approve-items-container');
+    if (container) {
+        container.innerHTML = order.items.map((item, idx) => {
+            // البحث عن كافة الدفعات المتوفرة لهذه المادة
+            const availableBatches = (state.materials || [])
+                .filter(m => m.name.trim().toLowerCase() === item.name.trim().toLowerCase() && m.quantity > 0)
+                .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+
+            const totalAvailable = availableBatches.reduce((sum, b) => sum + b.quantity, 0);
+            const isSufficient = totalAvailable >= item.quantity;
+
+            const batchOptions = availableBatches.map(b => {
+                const daysToExpiry = Math.ceil((new Date(b.expiryDate) - new Date()) / (1000 * 60 * 60 * 24));
+                const isNearExpiry = daysToExpiry <= 90;
+                const isExpired = daysToExpiry < 0;
+                const storeLabel = b.store === 'store1' ? 'مخزن 1' : 'مخزن 2';
+                const warningTag = isExpired ? ' [منتهي!]' : isNearExpiry ? ' [قريب نفاذ]' : '';
+                return `<option value="${b.id}">وجبة: ${b.batchNumber} | نفاذ: ${b.expiryDate}${warningTag} | متوفر: ${b.quantity} ق (${storeLabel})</option>`;
+            }).join('');
+
+            return `
+                <div class="approve-item-card" style="background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:8px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+                        <div>
+                            <strong style="font-size:0.95rem; color:var(--text-primary);">${item.name}</strong>
+                            <span class="tag" style="margin-right:6px; font-size:0.75rem;">المطلوب: <strong>${item.quantity}</strong> قطعة</span>
+                        </div>
+                        <div>
+                            <span style="font-size:0.8rem; font-weight:600; color:${isSufficient ? 'var(--success)' : 'var(--danger)'};">
+                                المتوفر الكلي بالمخازن: ${totalAvailable} قطعة ${!isSufficient ? '⚠️ (رصيد غير كافٍ)' : ''}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label" style="font-size:0.8rem; margin-bottom:4px; display:flex; justify-content:space-between;">
+                            <span>اختر الوجبة وتاريخ الصلاحية للصرف:</span>
+                            <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:normal;">(أو اتركها تلقائي لأقرب نفاذ)</span>
+                        </label>
+                        <select class="form-control approve-item-batch-select" data-item-index="${idx}" style="font-size:0.85rem; padding:6px 10px;">
+                            <option value="auto" selected>⚡ تلقائي: أقرب تاريخ نفاذ (الأقدم صلاحية أولاً - FEFO)</option>
+                            ${batchOptions}
+                        </select>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
 
     openModal('approve-order-modal');
 }
@@ -3701,11 +3860,21 @@ function submitAddMaterialForm() {
     }
 }
 
-// الموافقة على الطلب
+// الموافقة على الطلب وصرف المواد وفق الخيارات المحددة
 function submitApproveOrder() {
-    if (approveCustomerOrder(selectedOrderIdForApproval)) {
+    if (!selectedOrderIdForApproval) return;
+
+    const batchSelects = document.querySelectorAll('.approve-item-batch-select');
+    const chosenBatches = {};
+    batchSelects.forEach(sel => {
+        const itemIdx = sel.getAttribute('data-item-index');
+        chosenBatches[itemIdx] = sel.value; // 'auto' or specific material id
+    });
+
+    if (approveCustomerOrder(selectedOrderIdForApproval, chosenBatches)) {
         closeModal('approve-order-modal');
         renderAdminDashboard();
+        if (typeof renderAdminOrdersTable === 'function') renderAdminOrdersTable();
     }
 }
 
