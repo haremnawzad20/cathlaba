@@ -95,8 +95,8 @@ class AppState {
             localStorage.clear();
         }
 
-        // إعادة تعيين وحذف المواد السابقة واعتماد جرد 2026-10-28 الجديد وتحويل المصدر إلى عامة
-        const INVENTORY_VERSION = '20261029_v2';
+        // إعادة تعيين وحذف التخزين المحلي القديم عند تحديث الإصدار لضمان مزامنة سليمة من قاعدة البيانات السحابية
+        const INVENTORY_VERSION = '20261102_v4';
         if (localStorage.getItem('cath_inventory_version') !== INVENTORY_VERSION) {
             localStorage.removeItem('cath_materials');
             localStorage.removeItem('cath_invoices');
@@ -106,6 +106,7 @@ class AppState {
             localStorage.removeItem('cath_purchases');
             localStorage.removeItem('cath_purchase_details');
             localStorage.removeItem('cath_transactions');
+            localStorage.removeItem('cath_has_unsaved_changes');
             localStorage.setItem('cath_inventory_version', INVENTORY_VERSION);
         }
 
@@ -160,23 +161,48 @@ class AppState {
                 ? [...STENTS_STORE2_DATA]
                 : [];
         } else if (typeof STENTS_STORE2_DATA !== 'undefined' && Array.isArray(STENTS_STORE2_DATA)) {
-            const validIds = new Set(STENTS_STORE2_DATA.map(s => s.id));
-            const hasOldMats = this.materials.some(m => !validIds.has(m.id) && !m.id.startsWith('mat-stent-'));
-            if (hasOldMats) {
-                this.materials = [...STENTS_STORE2_DATA];
-            } else {
-                let addedCount = 0;
-                STENTS_STORE2_DATA.forEach(stent => {
-                    const exists = this.materials.some(m => 
-                        m.id === stent.id || 
-                        (m.name === stent.name && m.batchNumber === stent.batchNumber && m.store === 'store2' && m.expiryDate === stent.expiryDate)
-                    );
-                    if (!exists) {
-                        this.materials.push({ ...stent });
-                        addedCount++;
-                    }
-                });
-            }
+            // نضمن فقط إضافة أي شبكات مفقودة من ملف جرد مخزن 2 دون حذف أي مادة مدخلة أو تابعة لمخزن 1
+            let addedCount = 0;
+            STENTS_STORE2_DATA.forEach(stent => {
+                const exists = this.materials.some(m => 
+                    m.id === stent.id || 
+                    (m.name === stent.name && m.batchNumber === stent.batchNumber && m.store === 'store2' && m.expiryDate === stent.expiryDate)
+                );
+                if (!exists) {
+                    this.materials.push({ ...stent });
+                    addedCount++;
+                }
+            });
+        }
+
+        // ضمان وجود كافة المواد التابعة للفواتير وقوائم التوريد المعتمدة في المخازن برصيدها
+        if (this.Invoices && Array.isArray(this.Invoices)) {
+            this.Invoices.forEach(inv => {
+                if (inv.status === 'completed' && Array.isArray(inv.items)) {
+                    inv.items.forEach(item => {
+                        let mat = this.materials.find(m => 
+                            m.name.trim().toLowerCase() === item.name.trim().toLowerCase() && 
+                            m.batchNumber === item.batchNumber && 
+                            m.store === item.store &&
+                            m.expiryDate === item.expiryDate
+                        );
+                        if (!mat) {
+                            this.materials.push({
+                                id: 'mat-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+                                name: item.name,
+                                batchNumber: item.batchNumber,
+                                expiryDate: item.expiryDate,
+                                quantity: item.quantity,
+                                company: item.company || 'غير محدد',
+                                store: item.store || 'store1',
+                                category: item.category || 'STENT',
+                                sourceType: item.sourceType || 'عامة',
+                                price: item.price || 0
+                            });
+                        }
+                    });
+                }
+            });
         }
 
         // ضمان تحويل كافة مواد مخزن 2 من فاتورة إلى عامة
@@ -3844,9 +3870,6 @@ function submitAddMaterialForm() {
     const source = document.getElementById('add-source-select').value;
     const price = parseFloat(document.getElementById('add-price').value) || 0;
 
-    // تنبيه تشخيصي للتأكد من القيمة المقروءة ومساعدة المستخدم في تأكيد التحديث
-    alert(`المعلومات المقروءة من المتصفح:\nاسم المادة: ${name}\nالتصنيف المختار: ${category}`);
-
     if (!name || !batch || !expiry || isNaN(qty) || qty <= 0 || !company || !category || !source || isNaN(price) || price < 0) {
         showToast('الرجاء تعبئة كافة الحقول بشكل صحيح', 'danger');
         return;
@@ -4609,11 +4632,11 @@ function cancelEntireReceiptDraft() {
 window.cancelEntireReceiptDraft = cancelEntireReceiptDraft;
 
 async function submitFinalizeReceiptDraft(isDraft = true) {
-    const receiptNum = document.getElementById('add-tab-receipt-number').value.trim();
+    const receiptNumInput = document.getElementById('add-tab-receipt-number');
+    let receiptNum = receiptNumInput ? receiptNumInput.value.trim() : '';
     if (!receiptNum) {
-        showToast('الرجاء إدخال رقم الوصل لتأكيد التوريد', 'danger');
-        document.getElementById('add-tab-receipt-number').focus();
-        return;
+        receiptNum = generateAutoInvoiceNumber();
+        if (receiptNumInput) receiptNumInput.value = receiptNum;
     }
 
     const sourceType = document.getElementById('add-tab-source-type').value;
@@ -4674,7 +4697,12 @@ async function submitFinalizeReceiptDraft(isDraft = true) {
         return;
     }
     
-    const listId = document.getElementById('add-tab-list-id').value;
+    const listIdInput = document.getElementById('add-tab-list-id');
+    let listId = listIdInput ? listIdInput.value.trim() : '';
+    if (!listId) {
+        listId = generateNewListId();
+        if (listIdInput) listIdInput.value = listId;
+    }
     const totalVal = itemsToValidate.reduce((sum, item) => sum + (item.quantity * item.price), 0);
     
     if (isDraft) {
