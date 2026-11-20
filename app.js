@@ -3599,35 +3599,752 @@ function renderForecastPanel() {
     renderPaginationButtons('forecast', totalItems);
 }
 
-// سجل الحركات (التاريخ)
-function renderTransactionsTable() {
-    const tbody = document.getElementById('transactions-tbody');
-    tbody.innerHTML = '';
+// ==========================================
+// سجل الحركات والتاريخ اليومي (Daily Transactions Cards)
+// ==========================================
+let openedTxDates = new Set();
 
-    state.transactions.slice(0, 15).forEach(tx => {
-        const typeBadge = {
-            'transfer': '<span class="tag tag-store1">تحويل مخزني</span>',
-            'issue': '<span class="tag tag-store2">صرف لزبون</span>',
-            'receipt': '<span class="tag tag-approved">توريد جديد</span>',
-            'reconcile': '<span class="tag tag-rejected">تعديل جرد</span>'
-        }[tx.type];
-
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td style="font-size:0.85rem;">${tx.date}</td>
-            <td>${typeBadge}</td>
-            <td style="font-weight:700;">${tx.materialName}</td>
-            <td><code>${tx.batchNumber || 'N/A'}</code></td>
-            <td style="font-weight:700; color:${tx.quantity < 0 ? 'var(--danger)' : 'var(--success)'}">${tx.quantity > 0 ? '+' : ''}${tx.quantity}</td>
-            <td>${tx.fromStore} ➔ ${tx.toDest}</td>
-        `;
-        tbody.appendChild(tr);
-    });
-
-    if (state.transactions.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-secondary);">لا توجد حركات مسجلة</td></tr>`;
+function toggleDailyTxCard(dateKey, safeId) {
+    const card = document.getElementById(`daily-tx-card-${safeId}`) || document.querySelector(`.daily-tx-card[data-date="${dateKey}"]`);
+    if (!card) return;
+    
+    const isCollapsed = card.classList.contains('collapsed');
+    const toggleText = card.querySelector('.daily-issue-toggle-text');
+    
+    if (isCollapsed) {
+        card.classList.remove('collapsed');
+        openedTxDates.add(dateKey);
+        if (toggleText) toggleText.innerText = 'طي القائمة 🔼';
+    } else {
+        card.classList.add('collapsed');
+        openedTxDates.delete(dateKey);
+        if (toggleText) toggleText.innerText = 'انقر للعرض 🔽';
     }
 }
+window.toggleDailyTxCard = toggleDailyTxCard;
+
+function expandAllTxReportCards() {
+    document.querySelectorAll('.daily-tx-card').forEach(card => {
+        card.classList.remove('collapsed');
+        const dateKey = card.getAttribute('data-date');
+        if (dateKey) openedTxDates.add(dateKey);
+        const toggleText = card.querySelector('.daily-issue-toggle-text');
+        if (toggleText) toggleText.innerText = 'طي القائمة 🔼';
+    });
+}
+window.expandAllTxReportCards = expandAllTxReportCards;
+
+function collapseAllTxReportCards() {
+    document.querySelectorAll('.daily-tx-card').forEach(card => {
+        card.classList.add('collapsed');
+        const dateKey = card.getAttribute('data-date');
+        if (dateKey) openedTxDates.delete(dateKey);
+        const toggleText = card.querySelector('.daily-issue-toggle-text');
+        if (toggleText) toggleText.innerText = 'انقر للعرض 🔽';
+    });
+}
+window.collapseAllTxReportCards = collapseAllTxReportCards;
+
+function renderTransactionsTable() {
+    const container = document.getElementById('transactions-container');
+    const legacyTbody = document.getElementById('transactions-tbody');
+    if (!container && !legacyTbody) return;
+
+    if (container) container.innerHTML = '';
+    if (legacyTbody) legacyTbody.innerHTML = '';
+
+    const matFilterInput = document.getElementById('tx-report-material-filter');
+    const matFilter = matFilterInput ? matFilterInput.value.trim().toLowerCase() : '';
+
+    const typeFilterSelect = document.getElementById('tx-report-type-filter');
+    const typeFilter = typeFilterSelect ? typeFilterSelect.value : 'all';
+
+    const sortOrderSelect = document.getElementById('tx-report-sort-order');
+    const sortOrder = sortOrderSelect ? sortOrderSelect.value : 'desc';
+
+    const dateFromInput = document.getElementById('tx-report-date-from');
+    const dateFrom = dateFromInput ? dateFromInput.value : '';
+
+    const dateToInput = document.getElementById('tx-report-date-to');
+    const dateTo = dateToInput ? dateToInput.value : '';
+
+    let txs = Array.isArray(state.transactions) ? [...state.transactions] : [];
+
+    if (matFilter) {
+        txs = txs.filter(tx => 
+            (tx.materialName || '').toLowerCase().includes(matFilter) || 
+            (tx.batchNumber || '').toLowerCase().includes(matFilter) ||
+            (tx.fromStore || '').toLowerCase().includes(matFilter) ||
+            (tx.toDest || '').toLowerCase().includes(matFilter)
+        );
+    }
+
+    if (typeFilter !== 'all') {
+        txs = txs.filter(tx => tx.type === typeFilter);
+    }
+
+    if (dateFrom) {
+        txs = txs.filter(tx => (tx.date || '').split('T')[0] >= dateFrom);
+    }
+    if (dateTo) {
+        txs = txs.filter(tx => (tx.date || '').split('T')[0] <= dateTo);
+    }
+
+    // تجميع الحركات في قوائم يومية حسب تاريخ الحركة
+    const dateGroups = {};
+    txs.forEach(tx => {
+        const dKey = tx.date ? tx.date.split('T')[0] : 'غير محدد';
+        if (!dateGroups[dKey]) {
+            dateGroups[dKey] = [];
+        }
+        dateGroups[dKey].push(tx);
+    });
+
+    // ترتيب التواريخ حسب اختيار المستخدم
+    const sortedDates = Object.keys(dateGroups).sort((a, b) => {
+        if (a === 'غير محدد') return 1;
+        if (b === 'غير محدد') return -1;
+        return sortOrder === 'desc' 
+            ? new Date(b) - new Date(a)
+            : new Date(a) - new Date(b);
+    });
+
+    let grandTotalCount = 0;
+    let grandTotalQty = 0;
+
+    if (container) {
+        if (sortedDates.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; color: var(--text-secondary); padding: 40px 15px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                    <span style="font-size: 2.2rem; display: block; margin-bottom: 10px;">📜</span>
+                    لا توجد أي حركات مطابقة للخيارات المحددة في هذا النطاق.
+                </div>
+            `;
+        } else {
+            sortedDates.forEach(dateKey => {
+                const dayTxs = dateGroups[dateKey];
+                let dayTotalQty = 0;
+                let dayIssues = 0;
+                let dayTransfers = 0;
+                let dayReceipts = 0;
+                let dayReconciles = 0;
+
+                let rowsHtml = '';
+                dayTxs.forEach((tx, idx) => {
+                    const absQty = Math.abs(parseInt(tx.quantity) || 0);
+                    dayTotalQty += absQty;
+                    grandTotalQty += absQty;
+                    grandTotalCount++;
+
+                    if (tx.type === 'issue') dayIssues += absQty;
+                    else if (tx.type === 'transfer') dayTransfers += absQty;
+                    else if (tx.type === 'receipt') dayReceipts += absQty;
+                    else if (tx.type === 'reconcile') dayReconciles += absQty;
+
+                    const typeBadgeMap = {
+                        'transfer': '<span class="tag tag-store1" style="background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; font-weight:700;">🔄 تحويل مخزني</span>',
+                        'issue': '<span class="tag tag-store2" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; font-weight:700;">📤 صرف لزبون</span>',
+                        'receipt': '<span class="tag tag-approved" style="background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; font-weight:700;">📥 توريد جديد</span>',
+                        'reconcile': '<span class="tag tag-rejected" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca; font-weight:700;">⚖️ تعديل جرد</span>'
+                    };
+                    const typeBadge = typeBadgeMap[tx.type] || `<span class="tag">${tx.type || 'حركة'}</span>`;
+
+                    const formatStoreName = (s) => {
+                        if (!s) return '—';
+                        if (s === 'store1') return 'مخزن 1 (الرئيسي)';
+                        if (s === 'store2') return 'مخزن 2 (الجناح)';
+                        return s;
+                    };
+
+                    const fromDisplay = formatStoreName(tx.fromStore);
+                    const toDisplay = formatStoreName(tx.toDest);
+
+                    const extraDetails = tx.receiptNumber 
+                        ? `<span class="tag" style="background:rgba(59,130,246,0.12); color:#2563eb; font-weight:700; font-size:0.75rem;">وصل: ${tx.receiptNumber}</span>`
+                        : (tx.listId ? `<span class="tag" style="background:rgba(59,130,246,0.12); color:#2563eb; font-weight:700; font-size:0.75rem;">قائمة: ${tx.listId}</span>` : '—');
+
+                    const timePart = (tx.date && tx.date.includes('T')) ? tx.date.split('T')[1].substring(0, 5) : '';
+
+                    rowsHtml += `
+                        <tr>
+                            <td style="text-align:center; font-weight:700;">${idx + 1}</td>
+                            <td style="text-align:center;">${typeBadge}</td>
+                            <td style="font-weight:700; color:var(--text-primary);">${tx.materialName}</td>
+                            <td><code style="font-size:0.85rem; color:var(--accent);">${tx.batchNumber || 'بدون باج'}</code></td>
+                            <td style="font-weight:800; text-align:center; font-size:0.95rem; color:${tx.type === 'issue' ? 'var(--primary)' : tx.type === 'receipt' ? 'var(--success)' : 'var(--text-primary)'};">
+                                ${tx.quantity > 0 ? '+' : ''}${tx.quantity}
+                            </td>
+                            <td style="font-weight:600; font-size:0.85rem;">
+                                <span style="color:var(--text-secondary);">${fromDisplay}</span> 
+                                <span style="color:var(--primary); font-weight:bold; margin:0 4px;">➔</span> 
+                                <span style="color:var(--text-primary); font-weight:700;">${toDisplay}</span>
+                            </td>
+                            <td style="font-size:0.8rem; color:var(--text-secondary); text-align:center;">
+                                ${timePart ? `<span style="direction:ltr; display:inline-block; font-weight:600;">${timePart}</span>` : tx.date}
+                            </td>
+                            <td style="text-align:center;">${extraDetails}</td>
+                        </tr>
+                    `;
+                });
+
+                const safeId = dateKey.replace(/[^a-zA-Z0-9]/g, '_');
+                const isCollapsed = !openedTxDates.has(dateKey);
+
+                let breakdownPills = '';
+                if (dayIssues > 0) breakdownPills += `<span class="tag tag-store2" style="font-size:0.75rem; margin-right:4px;">صرف: ${dayIssues} ق</span>`;
+                if (dayTransfers > 0) breakdownPills += `<span class="tag tag-store1" style="font-size:0.75rem; margin-right:4px;">تحويل: ${dayTransfers} ق</span>`;
+                if (dayReceipts > 0) breakdownPills += `<span class="tag tag-approved" style="font-size:0.75rem; margin-right:4px;">توريد: ${dayReceipts} ق</span>`;
+                if (dayReconciles > 0) breakdownPills += `<span class="tag tag-rejected" style="font-size:0.75rem; margin-right:4px;">تعديل: ${dayReconciles} ق</span>`;
+
+                const card = document.createElement('div');
+                card.className = `daily-issue-card daily-tx-card ${isCollapsed ? 'collapsed' : ''}`;
+                card.id = `daily-tx-card-${safeId}`;
+                card.setAttribute('data-date', dateKey);
+                card.setAttribute('data-safe-id', safeId);
+
+                card.innerHTML = `
+                    <div class="daily-issue-header" onclick="toggleDailyTxCard('${dateKey}', '${safeId}')" title="انقر لفتح / طي حركات هذا اليوم">
+                        <div class="daily-issue-header-info">
+                            <span class="daily-issue-arrow">▼</span>
+                            <span class="daily-issue-date-badge">📅 ${formatArabicDate(dateKey)}</span>
+                            <span class="daily-issue-count-tag">${dayTxs.length} حركة مسجلة</span>
+                            ${breakdownPills}
+                        </div>
+                        <div class="daily-issue-header-stats">
+                            <span class="daily-stat-pill">مجموع القطع: <strong style="color:var(--primary); font-size:0.95rem;">${dayTotalQty.toLocaleString('ar-EG')}</strong> قطعة</span>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); exportDailyTxReportPDF('${dateKey}')" style="padding:5px 12px; font-size:0.8rem; display:inline-flex; align-items:center; gap:5px; background:var(--primary-light); color:var(--primary); border:1px solid var(--primary); border-radius:6px; cursor:pointer;" title="طباعة حركات هذا اليوم">
+                                🖨️ طباعة حركات هذا اليوم
+                            </button>
+                            <span class="daily-issue-toggle-btn">
+                                <span class="daily-issue-toggle-text">${isCollapsed ? 'انقر للعرض 🔽' : 'طي القائمة 🔼'}</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="daily-issue-body" id="daily-tx-body-${safeId}">
+                        <div class="table-responsive">
+                            <table class="table" style="margin-bottom:0;">
+                                <thead>
+                                    <tr>
+                                        <th style="width:40px; text-align:center;">#</th>
+                                        <th style="text-align:center;">نوع الحركة</th>
+                                        <th>إسم المادة الطبية</th>
+                                        <th>رقم التشغيلة (الباج)</th>
+                                        <th style="text-align:center;">الكمية</th>
+                                        <th>المسار (من ➔ إلى)</th>
+                                        <th style="text-align:center;">الوقت / التاريخ</th>
+                                        <th style="text-align:center;">ملاحظات / مرجع</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rowsHtml}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="daily-issue-footer">
+                            <span>إجمالي حركات يوم ${formatArabicDate(dateKey)}: <strong>${dayTxs.length}</strong> حركة</span>
+                            <div style="display:flex; gap:15px;">
+                                <span>مجموع القطع المنقولة / المصروفة: <strong style="color:var(--primary);">${dayTotalQty.toLocaleString('ar-EG')}</strong> قطعة</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+    }
+
+    // تحديث إحصائيات الفوتر
+    const totalDaysSpan = document.getElementById('tx-report-total-days');
+    if (totalDaysSpan) totalDaysSpan.innerText = sortedDates.length.toLocaleString('ar-EG');
+
+    const totalCountSpan = document.getElementById('tx-report-total-count');
+    if (totalCountSpan) totalCountSpan.innerText = txs.length.toLocaleString('ar-EG');
+
+    const totalQtySpan = document.getElementById('tx-report-total-qty');
+    if (totalQtySpan) totalQtySpan.innerText = grandTotalQty.toLocaleString('ar-EG');
+}
+window.renderTransactionsTable = renderTransactionsTable;
+
+// طباعة حركات يوم معين
+function exportDailyTxReportPDF(dateKey) {
+    const dayTxs = (state.transactions || []).filter(tx => (tx.date || '').split('T')[0] === dateKey);
+    if (!dayTxs || dayTxs.length === 0) {
+        showToast('لا توجد حركات مسجلة لهذا التاريخ', 'warning');
+        return;
+    }
+
+    let totalQty = 0;
+    let totalIssues = 0;
+    let totalTransfers = 0;
+    let totalReceipts = 0;
+    let totalReconciles = 0;
+
+    const rowsHtml = dayTxs.map((tx, idx) => {
+        const absQty = Math.abs(parseInt(tx.quantity) || 0);
+        totalQty += absQty;
+        if (tx.type === 'issue') totalIssues += absQty;
+        else if (tx.type === 'transfer') totalTransfers += absQty;
+        else if (tx.type === 'receipt') totalReceipts += absQty;
+        else if (tx.type === 'reconcile') totalReconciles += absQty;
+
+        const typeLabel = {
+            'transfer': 'تحويل مخزني',
+            'issue': 'صرف لزبون',
+            'receipt': 'توريد جديد',
+            'reconcile': 'تعديل جرد'
+        }[tx.type] || tx.type || 'حركة';
+
+        const formatStoreName = (s) => {
+            if (!s) return '—';
+            if (s === 'store1') return 'مخزن 1';
+            if (s === 'store2') return 'مخزن 2';
+            return s;
+        };
+
+        const fromDisplay = formatStoreName(tx.fromStore);
+        const toDisplay = formatStoreName(tx.toDest);
+        const refNote = tx.receiptNumber ? `وصل: ${tx.receiptNumber}` : (tx.listId ? `قائمة: ${tx.listId}` : '—');
+        const timePart = (tx.date && tx.date.includes('T')) ? tx.date.split('T')[1].substring(0, 5) : '—';
+
+        return `
+            <tr>
+                <td style="text-align:center;">${idx + 1}</td>
+                <td style="text-align:center; font-weight:bold;">${typeLabel}</td>
+                <td style="font-weight:bold;">${tx.materialName}</td>
+                <td style="text-align:center;"><code>${tx.batchNumber || 'بدون باج'}</code></td>
+                <td style="font-weight:bold; text-align:center;">${tx.quantity}</td>
+                <td>${fromDisplay} ➔ ${toDisplay}</td>
+                <td style="text-align:center;">${timePart}</td>
+                <td style="text-align:center;">${refNote}</td>
+            </tr>
+        `;
+    }).join('');
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        showToast('يرجى السماح بالنوافذ المنبثقة لطباعة التقرير', 'warning');
+        return;
+    }
+
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head>
+            <meta charset="UTF-8">
+            <title>سجل حركات المواد - ${dateKey}</title>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+                body {
+                    font-family: 'Cairo', sans-serif;
+                    padding: 25px 35px;
+                    color: #1e293b;
+                    background-color: #ffffff;
+                    direction: rtl;
+                    font-size: 11px;
+                }
+                .header {
+                    text-align: center;
+                    margin-bottom: 20px;
+                    border-bottom: 2px solid #2563eb;
+                    padding-bottom: 12px;
+                }
+                .header h1 {
+                    margin: 0;
+                    font-size: 18px;
+                    color: #1e3a8a;
+                }
+                .header h2 {
+                    margin: 4px 0 0 0;
+                    font-size: 13px;
+                    color: #475569;
+                    font-weight: normal;
+                }
+                .meta-info {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 15px;
+                    font-size: 11px;
+                    color: #1e293b;
+                    background-color: #f8fafc;
+                    padding: 10px 18px;
+                    border-radius: 6px;
+                    border: 1px solid #e2e8f0;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 10px;
+                }
+                th, td {
+                    border: 1px solid #cbd5e1;
+                    padding: 7px 10px;
+                    text-align: right;
+                }
+                th {
+                    background-color: #f1f5f9;
+                    color: #0f172a;
+                    font-weight: bold;
+                }
+                tr:nth-child(even) {
+                    background-color: #f8fafc;
+                }
+                .summary-section {
+                    margin-top: 15px;
+                    padding: 12px 18px;
+                    background-color: #eff6ff;
+                    border: 1px solid #93c5fd;
+                    border-radius: 6px;
+                    display: flex;
+                    justify-content: space-between;
+                    font-weight: bold;
+                    font-size: 12px;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                }
+                .signature-section {
+                    margin-top: 40px;
+                    display: flex;
+                    justify-content: space-around;
+                    text-align: center;
+                    font-weight: bold;
+                }
+                @media print {
+                    body { padding: 15px; }
+                    button { display: none; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>مستشفى آزادي التعليمي - مركز قسطرة وجراحة القلب</h1>
+                <h2>سجل حركة المواد اليومي (صرف، تحويل، وتوريد)</h2>
+            </div>
+            
+            <div class="meta-info">
+                <div><strong>📅 التاريخ:</strong> ${formatArabicDate(dateKey)}</div>
+                <div><strong>📋 إجمالي الحركات:</strong> ${dayTxs.length} حركة</div>
+                <div><strong>📦 مجموع الكميات:</strong> ${totalQty} قطعة</div>
+                <div><strong>🖨️ وقت الطباعة:</strong> ${new Date().toLocaleString('ar-EG')}</div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 5%; text-align:center;">#</th>
+                        <th style="width: 14%; text-align:center;">نوع الحركة</th>
+                        <th style="width: 25%;">إسم المادة الطبية</th>
+                        <th style="width: 12%; text-align:center;">الباج</th>
+                        <th style="width: 8%; text-align:center;">الكمية</th>
+                        <th style="width: 20%;">المسار (من ➔ إلى)</th>
+                        <th style="width: 8%; text-align:center;">الوقت</th>
+                        <th style="width: 8%; text-align:center;">المرجع</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rowsHtml}
+                </tbody>
+            </table>
+
+            <div class="summary-section">
+                <span>إجمالي حركات يوم ${formatArabicDate(dateKey)}: ${dayTxs.length} حركة</span>
+                <span>الصرف: ${totalIssues} ق | التحويل: ${totalTransfers} ق | التوريد: ${totalReceipts} ق | التعديل: ${totalReconciles} ق</span>
+                <span>المجموع الكلي: ${totalQty} قطعة</span>
+            </div>
+
+            <div class="signature-section">
+                <div>
+                    <div>أمين المخزن المختص</div>
+                    <div style="margin-top: 35px;">___________________</div>
+                </div>
+                <div>
+                    <div>مدقق السجلات</div>
+                    <div style="margin-top: 35px;">___________________</div>
+                </div>
+                <div>
+                    <div>مدير المركز / الشعبة</div>
+                    <div style="margin-top: 35px;">___________________</div>
+                </div>
+            </div>
+
+            <script>
+                window.onload = function() {
+                    window.print();
+                };
+            </script>
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+}
+window.exportDailyTxReportPDF = exportDailyTxReportPDF;
+
+// طباعة التقرير الشامل لجميع حركات السجل مقسمة ومرتبة حسب الأيام
+function exportTransactionsReportPDF() {
+    const matFilterInput = document.getElementById('tx-report-material-filter');
+    const matFilter = matFilterInput ? matFilterInput.value.trim().toLowerCase() : '';
+
+    const typeFilterSelect = document.getElementById('tx-report-type-filter');
+    const typeFilter = typeFilterSelect ? typeFilterSelect.value : 'all';
+
+    const sortOrderSelect = document.getElementById('tx-report-sort-order');
+    const sortOrder = sortOrderSelect ? sortOrderSelect.value : 'desc';
+
+    const dateFromInput = document.getElementById('tx-report-date-from');
+    const dateFrom = dateFromInput ? dateFromInput.value : '';
+
+    const dateToInput = document.getElementById('tx-report-date-to');
+    const dateTo = dateToInput ? dateToInput.value : '';
+
+    let txs = Array.isArray(state.transactions) ? [...state.transactions] : [];
+
+    if (matFilter) {
+        txs = txs.filter(tx => 
+            (tx.materialName || '').toLowerCase().includes(matFilter) || 
+            (tx.batchNumber || '').toLowerCase().includes(matFilter) ||
+            (tx.fromStore || '').toLowerCase().includes(matFilter) ||
+            (tx.toDest || '').toLowerCase().includes(matFilter)
+        );
+    }
+    if (typeFilter !== 'all') {
+        txs = txs.filter(tx => tx.type === typeFilter);
+    }
+    if (dateFrom) {
+        txs = txs.filter(tx => (tx.date || '').split('T')[0] >= dateFrom);
+    }
+    if (dateTo) {
+        txs = txs.filter(tx => (tx.date || '').split('T')[0] <= dateTo);
+    }
+
+    if (txs.length === 0) {
+        showToast('لا توجد حركات مسجلة مطابقة للخيارات المحددة', 'warning');
+        return;
+    }
+
+    // تجميع الحركات في قوائم يومية
+    const dateGroups = {};
+    txs.forEach(tx => {
+        const dKey = tx.date ? tx.date.split('T')[0] : 'غير محدد';
+        if (!dateGroups[dKey]) dateGroups[dKey] = [];
+        dateGroups[dKey].push(tx);
+    });
+
+    const sortedDates = Object.keys(dateGroups).sort((a, b) => {
+        if (a === 'غير محدد') return 1;
+        if (b === 'غير محدد') return -1;
+        return sortOrder === 'desc' ? new Date(b) - new Date(a) : new Date(a) - new Date(b);
+    });
+
+    let grandTotalQty = 0;
+    let tablesHtml = '';
+
+    sortedDates.forEach(dateKey => {
+        const dayTxs = dateGroups[dateKey];
+        let dayQty = 0;
+
+        const rowsHtml = dayTxs.map((tx, idx) => {
+            const absQty = Math.abs(parseInt(tx.quantity) || 0);
+            dayQty += absQty;
+            grandTotalQty += absQty;
+
+            const typeLabel = {
+                'transfer': 'تحويل مخزني',
+                'issue': 'صرف لزبون',
+                'receipt': 'توريد جديد',
+                'reconcile': 'تعديل جرد'
+            }[tx.type] || tx.type || 'حركة';
+
+            const formatStoreName = (s) => {
+                if (!s) return '—';
+                if (s === 'store1') return 'مخزن 1';
+                if (s === 'store2') return 'مخزن 2';
+                return s;
+            };
+
+            const fromDisplay = formatStoreName(tx.fromStore);
+            const toDisplay = formatStoreName(tx.toDest);
+            const refNote = tx.receiptNumber ? `وصل: ${tx.receiptNumber}` : (tx.listId ? `قائمة: ${tx.listId}` : '—');
+
+            return `
+                <tr>
+                    <td style="text-align:center;">${idx + 1}</td>
+                    <td style="text-align:center; font-weight:bold;">${typeLabel}</td>
+                    <td style="font-weight:bold;">${tx.materialName}</td>
+                    <td style="text-align:center;"><code>${tx.batchNumber || 'بدون باج'}</code></td>
+                    <td style="font-weight:bold; text-align:center;">${tx.quantity}</td>
+                    <td>${fromDisplay} ➔ ${toDisplay}</td>
+                    <td style="text-align:center;">${refNote}</td>
+                </tr>
+            `;
+        }).join('');
+
+        tablesHtml += `
+            <div style="margin-top: 25px; page-break-inside: avoid;">
+                <div style="display:flex; justify-content:space-between; background-color:#e0e7ff; padding: 7px 14px; border: 1px solid #c7d2fe; border-bottom: none; border-radius: 6px 6px 0 0; font-weight: bold;">
+                    <span style="color:#1e3a8a;">📅 قائمة حركات يوم: ${formatArabicDate(dateKey)} (${dayTxs.length} حركة)</span>
+                    <span style="color:#0f172a;">مجموع اليوم: ${dayQty} قطعة</span>
+                </div>
+                <table style="margin-top: 0;">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%; text-align:center;">#</th>
+                            <th style="width: 14%; text-align:center;">نوع الحركة</th>
+                            <th style="width: 28%;">إسم المادة</th>
+                            <th style="width: 13%; text-align:center;">الباج</th>
+                            <th style="width: 10%; text-align:center;">الكمية</th>
+                            <th style="width: 20%;">المسار (من ➔ إلى)</th>
+                            <th style="width: 10%; text-align:center;">المرجع</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    });
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        showToast('يرجى السماح بالنوافذ المنبثقة لطباعة التقرير', 'warning');
+        return;
+    }
+
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head>
+            <meta charset="UTF-8">
+            <title>تقرير سجل الحركات الشامل</title>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+                body {
+                    font-family: 'Cairo', sans-serif;
+                    padding: 25px 35px;
+                    color: #1e293b;
+                    background-color: #ffffff;
+                    direction: rtl;
+                    font-size: 11px;
+                }
+                .header {
+                    text-align: center;
+                    margin-bottom: 20px;
+                    border-bottom: 2px solid #2563eb;
+                    padding-bottom: 12px;
+                }
+                .header h1 {
+                    margin: 0;
+                    font-size: 18px;
+                    color: #1e3a8a;
+                }
+                .header h2 {
+                    margin: 4px 0 0 0;
+                    font-size: 13px;
+                    color: #475569;
+                    font-weight: normal;
+                }
+                .meta-info {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 15px;
+                    font-size: 11px;
+                    color: #1e293b;
+                    background-color: #f8fafc;
+                    padding: 10px 18px;
+                    border-radius: 6px;
+                    border: 1px solid #e2e8f0;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                th, td {
+                    border: 1px solid #cbd5e1;
+                    padding: 7px 10px;
+                    text-align: right;
+                }
+                th {
+                    background-color: #f1f5f9;
+                    color: #0f172a;
+                    font-weight: bold;
+                }
+                tr:nth-child(even) {
+                    background-color: #f8fafc;
+                }
+                .summary-section {
+                    margin-top: 25px;
+                    padding: 14px 20px;
+                    background-color: #eff6ff;
+                    border: 1px solid #93c5fd;
+                    border-radius: 6px;
+                    display: flex;
+                    justify-content: space-between;
+                    font-weight: bold;
+                    font-size: 13px;
+                }
+                .signature-section {
+                    margin-top: 40px;
+                    display: flex;
+                    justify-content: space-around;
+                    text-align: center;
+                    font-weight: bold;
+                }
+                @media print {
+                    body { padding: 15px; }
+                    button { display: none; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>مستشفى آزادي التعليمي - مركز قسطرة وجراحة القلب</h1>
+                <h2>تقرير سجل الحركة والتاريخ الشامل (مقسم حسب الأيام)</h2>
+            </div>
+            
+            <div class="meta-info">
+                <div><strong>📅 النطاق الزمني:</strong> ${dateFrom || 'من البداية'} إلى ${dateTo || 'حتى الآن'}</div>
+                <div><strong>📋 إجمالي الأيام:</strong> ${sortedDates.length} يوم</div>
+                <div><strong>🔢 إجمالي الحركات:</strong> ${txs.length} حركة</div>
+                <div><strong>📦 مجموع القطع:</strong> ${grandTotalQty} قطعة</div>
+            </div>
+
+            ${tablesHtml}
+
+            <div class="summary-section">
+                <span>إجمالي التقرير: <strong>${sortedDates.length}</strong> يوم مسجل</span>
+                <span>مجموع الحركات: <strong>${txs.length}</strong> حركة</span>
+                <span>إجمالي القطع: <strong>${grandTotalQty}</strong> قطعة</span>
+            </div>
+
+            <div class="signature-section">
+                <div>
+                    <div>أمين المخزن المختص</div>
+                    <div style="margin-top: 35px;">___________________</div>
+                </div>
+                <div>
+                    <div>مدقق السجلات</div>
+                    <div style="margin-top: 35px;">___________________</div>
+                </div>
+                <div>
+                    <div>مدير المركز / الشعبة</div>
+                    <div style="margin-top: 35px;">___________________</div>
+                </div>
+            </div>
+
+            <script>
+                window.onload = function() {
+                    window.print();
+                };
+            </script>
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+}
+window.exportTransactionsReportPDF = exportTransactionsReportPDF;
 
 // 8. إدارة النوافذ المنبثقة (Modals Control)
 // فتح مودال إضافة المواد للسلة للزبون وتحديد الكمية
@@ -3936,6 +4653,8 @@ function switchTab(tabId) {
         renderSavedReceiptsTable();
     } else if (tabId === 'tab-system-materials') {
         renderSystemMaterialsTable();
+    } else if (tabId === 'tab-transactions') {
+        renderTransactionsTable();
     }
 }
 window.switchTab = switchTab;
