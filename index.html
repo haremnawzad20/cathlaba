@@ -427,28 +427,69 @@
                         </div>
                     </div>
 
-                    <!-- محتويات التبويب 6: السجلات -->
+                    <!-- محتويات التبويب 6: سجل الحركة والتاريخ اليومي -->
                     <div id="tab-transactions" class="tab-pane">
                         <div class="card">
-                            <div class="card-header">
-                                <h3 class="card-title">📜 سجل حركات الصرف والتحويل والإدخال للمراجعة والتدقيق</h3>
+                            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                                <h3 class="card-title">📜 سجل الحركة والتاريخ اليومي (الصرف، التحويل، والتوريد)</h3>
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="expandAllTxReportCards()" style="padding:6px 12px; font-size:0.8rem; background:var(--bg-tertiary); border:1px solid var(--border-color); cursor:pointer;">📂 فتح كافة القوائم</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="collapseAllTxReportCards()" style="padding:6px 12px; font-size:0.8rem; background:var(--bg-tertiary); border:1px solid var(--border-color); cursor:pointer;">📁 طي كافة القوائم</button>
+                                    <button class="btn btn-primary" onclick="exportTransactionsReportPDF()" style="padding:6px 12px; font-size:0.85rem;">🖨️ طباعة سجل الحركات PDF</button>
+                                </div>
                             </div>
-                            <div class="table-responsive">
-                                <table class="table">
-                                    <thead>
-                                        <tr>
-                                            <th>التاريخ</th>
-                                            <th>نوع الحركة</th>
-                                            <th>المادة</th>
-                                            <th>الباج</th>
-                                            <th>الكمية</th>
-                                            <th>المسار (من ➔ إلى)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="transactions-tbody">
-                                        <!-- تعبأ ديناميكياً بواسطة JS -->
-                                    </tbody>
-                                </table>
+                            
+                            <!-- شريط التصفية لسجل الحركات -->
+                            <div class="card-body" style="background:var(--bg-tertiary); border-bottom:1px solid var(--border-color); padding:15px;">
+                                <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap:12px;">
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" style="font-size:0.8rem;">تصفية حسب المادة أو الباج</label>
+                                        <input type="text" id="tx-report-material-filter" class="form-control" placeholder="اكتب اسم المادة أو الباج..." oninput="renderTransactionsTable()">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" style="font-size:0.8rem;">تصفية حسب نوع الحركة</label>
+                                        <select id="tx-report-type-filter" class="form-control" onchange="renderTransactionsTable()">
+                                            <option value="all">كافة أنواع الحركات (الكل)</option>
+                                            <option value="issue">📤 صرف لزبون / عمليات</option>
+                                            <option value="transfer">🔄 تحويل مخزني</option>
+                                            <option value="receipt">📥 توريد جديد (وصل)</option>
+                                            <option value="reconcile">⚖️ تعديل جرد / تسوية</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" style="font-size:0.8rem;">ترتيب القوائم حسب التاريخ</label>
+                                        <select id="tx-report-sort-order" class="form-control" onchange="renderTransactionsTable()">
+                                            <option value="desc" selected>📅 من الأحدث إلى الأقدم ⬇️</option>
+                                            <option value="asc">📅 من الأقدم إلى الأحدث ⬆️</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" style="font-size:0.8rem;">من تاريخ</label>
+                                        <input type="date" id="tx-report-date-from" class="form-control" onchange="renderTransactionsTable()">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label class="form-label" style="font-size:0.8rem;">إلى تاريخ</label>
+                                        <input type="date" id="tx-report-date-to" class="form-control" onchange="renderTransactionsTable()">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- حاوية قوائم الحركات اليومية -->
+                            <div id="transactions-container" class="issue-reports-container" style="padding: 15px; display: flex; flex-direction: column; gap: 20px;">
+                                <!-- تعبأ ديناميكياً بالقوائم اليومية بواسطة JS -->
+                            </div>
+
+                            <!-- إحصائيات سجل الحركة الإجمالية -->
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:15px; background:var(--bg-secondary); border-top:1px solid var(--border-color); flex-wrap:wrap; gap:15px;">
+                                <div style="font-size:0.9rem; font-weight:700; color:var(--text-primary);">
+                                    إجمالي الأيام المسجلة: <span id="tx-report-total-days" style="color:var(--accent);">0</span> يوم
+                                </div>
+                                <div style="font-size:0.9rem; font-weight:700; color:var(--text-primary);">
+                                    إجمالي عدد الحركات: <span id="tx-report-total-count" style="color:var(--primary);">0</span> حركة
+                                </div>
+                                <div style="font-size:0.9rem; font-weight:700; color:var(--text-primary);">
+                                    إجمالي الكميات المنقولة / المصروفة: <span id="tx-report-total-qty" style="color:var(--success);">0</span> قطعة
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1617,6 +1658,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
     <script src="stents_data.js?v=1.0.3"></script>
-    <script src="app.js?v=2.3.1"></script>
+    <script src="app.js?v=2.3.2"></script>
 </body>
 </html>
