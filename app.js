@@ -96,7 +96,7 @@ class AppState {
         }
 
         // إعادة تعيين وحذف التخزين المحلي القديم عند تحديث الإصدار لضمان مزامنة سليمة من قاعدة البيانات السحابية
-        const INVENTORY_VERSION = '20261102_v4';
+        const INVENTORY_VERSION = '20261121_v1';
         if (localStorage.getItem('cath_inventory_version') !== INVENTORY_VERSION) {
             localStorage.removeItem('cath_materials');
             localStorage.removeItem('cath_invoices');
@@ -111,6 +111,7 @@ class AppState {
         }
 
         this.materials = JSON.parse(localStorage.getItem('cath_materials')) || MOCK_MATERIALS;
+        this.cleanUpZeroQuantityMaterials();
         this.transactions = JSON.parse(localStorage.getItem('cath_transactions')) || MOCK_TRANSACTIONS;
         this.orders = JSON.parse(localStorage.getItem('cath_orders')) || MOCK_ORDERS;
         this.categories = JSON.parse(localStorage.getItem('cath_categories')) || DEFAULT_CATEGORIES;
@@ -140,11 +141,14 @@ class AppState {
         // الهجرة التلقائية من الهيكل القديم للهيكل الجديد عند أول تشغيل
         this.migrateReceiptListsToEntities();
 
-        // استيراد وضمان وجود بيانات شبكات مخزن 2 (176 مادة) من تقرير الجرد
+        // استيراد وضمان وجود بيانات شبكات مخزن 2 من تقرير الجرد
         this.ensureStore2StentsImported();
 
         // تحويل كافة المواد المصنفة "أخرى" أو بدون تصنيف تلقائياً إلى "STENT"
         this.migrateOtherCategoriesToStent();
+
+        // مسح وحذف أي مواد رصيدها صفر أو أقل تلقائياً
+        this.cleanUpZeroQuantityMaterials();
         
         this.isSaving = false; // تهيئة متغير حالة الحفظ لمنع تعارض المزامنة
         
@@ -155,55 +159,21 @@ class AppState {
         this.initRealtimeSync();
     }
 
+    cleanUpZeroQuantityMaterials() {
+        if (Array.isArray(this.materials)) {
+            this.materials = this.materials.filter(m => (parseInt(m.quantity) || 0) > 0);
+        }
+    }
+
     ensureStore2StentsImported() {
         if (!this.materials || this.materials.length === 0) {
             this.materials = (typeof STENTS_STORE2_DATA !== 'undefined' && Array.isArray(STENTS_STORE2_DATA))
                 ? [...STENTS_STORE2_DATA]
                 : [];
-        } else if (typeof STENTS_STORE2_DATA !== 'undefined' && Array.isArray(STENTS_STORE2_DATA)) {
-            // نضمن فقط إضافة أي شبكات مفقودة من ملف جرد مخزن 2 دون حذف أي مادة مدخلة أو تابعة لمخزن 1
-            let addedCount = 0;
-            STENTS_STORE2_DATA.forEach(stent => {
-                const exists = this.materials.some(m => 
-                    m.id === stent.id || 
-                    (m.name === stent.name && m.batchNumber === stent.batchNumber && m.store === 'store2' && m.expiryDate === stent.expiryDate)
-                );
-                if (!exists) {
-                    this.materials.push({ ...stent });
-                    addedCount++;
-                }
-            });
         }
 
-        // ضمان وجود كافة المواد التابعة للفواتير وقوائم التوريد المعتمدة في المخازن برصيدها
-        if (this.Invoices && Array.isArray(this.Invoices)) {
-            this.Invoices.forEach(inv => {
-                if (inv.status === 'completed' && Array.isArray(inv.items)) {
-                    inv.items.forEach(item => {
-                        let mat = this.materials.find(m => 
-                            m.name.trim().toLowerCase() === item.name.trim().toLowerCase() && 
-                            m.batchNumber === item.batchNumber && 
-                            m.store === item.store &&
-                            m.expiryDate === item.expiryDate
-                        );
-                        if (!mat) {
-                            this.materials.push({
-                                id: 'mat-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-                                name: item.name,
-                                batchNumber: item.batchNumber,
-                                expiryDate: item.expiryDate,
-                                quantity: item.quantity,
-                                company: item.company || 'غير محدد',
-                                store: item.store || 'store1',
-                                category: item.category || 'STENT',
-                                sourceType: item.sourceType || 'عامة',
-                                price: item.price || 0
-                            });
-                        }
-                    });
-                }
-            });
-        }
+        // مسح وحذف أي مواد رصيدها صفر أو أقل تلقائياً من النظام
+        this.cleanUpZeroQuantityMaterials();
 
         // ضمان تحويل كافة مواد مخزن 2 من فاتورة إلى عامة
         if (this.materials) {
@@ -498,7 +468,11 @@ class AppState {
 
         let updated = false;
 
-        if (data.materials && Array.isArray(data.materials)) { this.materials = data.materials; localStorage.setItem('cath_materials', JSON.stringify(data.materials)); updated = true; }
+        if (data.materials && Array.isArray(data.materials)) { 
+            this.materials = data.materials.filter(m => (parseInt(m.quantity) || 0) > 0); 
+            localStorage.setItem('cath_materials', JSON.stringify(this.materials)); 
+            updated = true; 
+        }
         if (data.transactions) { this.transactions = data.transactions; localStorage.setItem('cath_transactions', JSON.stringify(data.transactions)); updated = true; }
         if (data.orders) { this.orders = data.orders; localStorage.setItem('cath_orders', JSON.stringify(data.orders)); updated = true; }
         if (data.categories) { this.categories = data.categories; localStorage.setItem('cath_categories', JSON.stringify(data.categories)); updated = true; }
@@ -558,6 +532,9 @@ class AppState {
         this.hasUnsavedChanges = true;
         localStorage.setItem('cath_has_unsaved_changes', 'true');
 
+        // تنظيف وحذف أي مواد رصيدها صفر أو أقل تلقائياً
+        this.cleanUpZeroQuantityMaterials();
+
         // 1. حفظ محلي سريع لضمان سلاسة الاستجابة للواجهة
         localStorage.setItem('cath_materials', JSON.stringify(this.materials));
         localStorage.setItem('cath_transactions', JSON.stringify(this.transactions));
@@ -583,6 +560,7 @@ class AppState {
     async saveToCloud() {
         this.isSaving = true;
         updateCloudStatus('saving');
+        this.cleanUpZeroQuantityMaterials();
         const payload = {
             materials: this.materials,
             transactions: this.transactions,
@@ -833,6 +811,9 @@ function transferBetweenStores(materialId, qty) {
     }
 
     mat1.quantity -= qty;
+    if (mat1.quantity <= 0) {
+        state.materials = state.materials.filter(m => m.id !== mat1.id);
+    }
 
     let mat2 = state.materials.find(m => m.name === mat1.name && m.batchNumber === mat1.batchNumber && m.store === 'store2');
     if (mat2) {
@@ -878,6 +859,9 @@ function issueStockToCustomer(materialId, qty, customer, storeSource) {
     }
 
     mat.quantity -= qty;
+    if (mat.quantity <= 0) {
+        state.materials = state.materials.filter(m => m.id !== mat.id);
+    }
 
     state.transactions.unshift({
         id: 'tx-' + Date.now(),
@@ -902,6 +886,9 @@ function reconcileMaterial(materialId, newQty) {
 
     const oldQty = mat.quantity;
     mat.quantity = newQty;
+    if (mat.quantity <= 0) {
+        state.materials = state.materials.filter(m => m.id !== mat.id);
+    }
 
     state.transactions.unshift({
         id: 'tx-' + Date.now(),
@@ -1182,6 +1169,7 @@ function approveCustomerOrder(orderId, chosenBatches = {}) {
         }
     });
 
+    state.cleanUpZeroQuantityMaterials();
     order.status = 'approved';
     const storesUsed = [...new Set(order.dispatchedItems.map(d => d.store === 'store1' ? 'مخزن 1' : 'مخزن 2'))];
     order.sourceStore = storesUsed.length > 0 ? storesUsed.join(' و ') : 'مخزن 2';
